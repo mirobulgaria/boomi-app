@@ -93,15 +93,42 @@ $global:OutputEncoding = $utf8NoBom
 
 function Initialize-BoomiContext {
 
+    # ========================================================
+    # Runtime authentication precedence
+    #
+    # App execution:
+    #   Process environment
+    #
+    # Legacy embedded CLI fallback:
+    #   Account / username -> User environment
+    #   Token              -> workspace DPAPI file
+    # ========================================================
+
     $AccountId = [Environment]::GetEnvironmentVariable(
         "BOOMI_ACCOUNT_ID",
-        "User"
+        "Process"
     )
+
+    if ([string]::IsNullOrWhiteSpace($AccountId)) {
+
+        $AccountId = [Environment]::GetEnvironmentVariable(
+            "BOOMI_ACCOUNT_ID",
+            "User"
+        )
+    }
 
     $Username = [Environment]::GetEnvironmentVariable(
         "BOOMI_USERNAME",
-        "User"
+        "Process"
     )
+
+    if ([string]::IsNullOrWhiteSpace($Username)) {
+
+        $Username = [Environment]::GetEnvironmentVariable(
+            "BOOMI_USERNAME",
+            "User"
+        )
+    }
 
     if ([string]::IsNullOrWhiteSpace($AccountId)) {
         throw "BOOMI_ACCOUNT_ID is missing."
@@ -111,57 +138,80 @@ function Initialize-BoomiContext {
         throw "BOOMI_USERNAME is missing."
     }
 
-    if (-not (Test-Path -LiteralPath $script:TokenFile -PathType Leaf)) {
-        throw "DPAPI token file not found: $script:TokenFile"
-    }
-
     # --------------------------------------------------------
-    # IMPORTANT:
+    # Prefer an app-provided runtime token.
     #
-    # Do NOT use ReadAllText(..., UTF8) here.
-    #
-    # The existing DPAPI file was created by Windows
-    # PowerShell Set-Content and may be UTF-16LE.
-    #
-    # Get-Content is BOM-aware and correctly reads the
-    # existing encrypted SecureString representation.
+    # The value exists only in the child-process environment.
+    # It must not be written to workspace configuration,
+    # logs, command-line arguments or project files.
     # --------------------------------------------------------
 
-    $encryptedToken = Get-Content `
-        -LiteralPath $script:TokenFile `
-        -Raw
+    $Token = [Environment]::GetEnvironmentVariable(
+        "BOOMI_API_TOKEN",
+        "Process"
+    )
 
-    if ([string]::IsNullOrWhiteSpace($encryptedToken)) {
-        throw "DPAPI token file is empty."
-    }
-
-    # Remove only trailing CR/LF introduced by Set-Content.
-    $encryptedToken = $encryptedToken.Trim()
-
-    try {
-
-        $secureToken = $encryptedToken |
-            ConvertTo-SecureString
-    }
-    catch {
-
-        throw "Failed to decode DPAPI token file. The existing token file was not modified."
-    }
-
-    $credential = New-Object `
-        System.Management.Automation.PSCredential(
-            "dummy",
-            $secureToken
-        )
-
-    $Token = $credential.GetNetworkCredential().Password
+    # --------------------------------------------------------
+    # Legacy fallback:
+    #
+    # If no runtime token was supplied, use the existing
+    # workspace DPAPI token file.
+    # --------------------------------------------------------
 
     if ([string]::IsNullOrWhiteSpace($Token)) {
-        throw "Failed to decrypt Boomi API token."
+
+        if (-not (Test-Path -LiteralPath $script:TokenFile -PathType Leaf)) {
+            throw "DPAPI token file not found: $script:TokenFile"
+        }
+
+        # IMPORTANT:
+        #
+        # Do NOT use ReadAllText(..., UTF8) here.
+        #
+        # The existing DPAPI file was created by Windows
+        # PowerShell Set-Content and may be UTF-16LE.
+        #
+        # Get-Content is BOM-aware and correctly reads the
+        # existing encrypted SecureString representation.
+
+        $encryptedToken = Get-Content `
+            -LiteralPath $script:TokenFile `
+            -Raw
+
+        if ([string]::IsNullOrWhiteSpace($encryptedToken)) {
+            throw "DPAPI token file is empty."
+        }
+
+        # Remove only trailing CR/LF introduced by Set-Content.
+        $encryptedToken = $encryptedToken.Trim()
+
+        try {
+
+            $secureToken = $encryptedToken |
+                ConvertTo-SecureString
+        }
+        catch {
+
+            throw "Failed to decode DPAPI token file. The existing token file was not modified."
+        }
+
+        $credential = New-Object `
+            System.Management.Automation.PSCredential(
+                "dummy",
+                $secureToken
+            )
+
+        $Token = $credential.GetNetworkCredential().Password
+
+        if ([string]::IsNullOrWhiteSpace($Token)) {
+            throw "Failed to decrypt Boomi API token."
+        }
     }
 
-    # Correct the interpolation without retaining the token
-    # beyond context initialization.
+    # --------------------------------------------------------
+    # Build Boomi API authentication context.
+    # --------------------------------------------------------
+
     $pair = "BOOMI_TOKEN.${Username}:" + $Token
 
     $encoded = [Convert]::ToBase64String(
@@ -181,7 +231,13 @@ function Initialize-BoomiContext {
         Accept        = "application/xml"
     }
 
-    # Remove plaintext token variables as soon as possible.
+    # --------------------------------------------------------
+    # Remove plaintext local variables as soon as possible.
+    #
+    # The process environment is owned by the caller and is
+    # not modified here.
+    # --------------------------------------------------------
+
     $Token          = $null
     $pair           = $null
     $credential     = $null

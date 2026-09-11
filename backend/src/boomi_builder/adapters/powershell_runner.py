@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
+from typing import Mapping, Sequence
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,7 @@ class PowerShellRunner:
         self,
         script_path: Path,
         arguments: Sequence[str] = (),
+        environment: Mapping[str, str] | None = None,
     ) -> ProcessResult:
         resolved_script = script_path.resolve()
 
@@ -50,6 +52,11 @@ class PowerShellRunner:
             *arguments,
         ]
 
+        child_environment = os.environ.copy()
+
+        if environment is not None:
+            child_environment.update(environment)
+
         try:
             completed = subprocess.run(
                 command,
@@ -59,6 +66,7 @@ class PowerShellRunner:
                 errors="strict",
                 timeout=self.timeout_seconds,
                 check=False,
+                env=child_environment,
             )
         except subprocess.TimeoutExpired as exc:
             raise PowerShellExecutionError(
