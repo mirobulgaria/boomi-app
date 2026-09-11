@@ -1,0 +1,9 @@
+[project]
+name = "boomi-builder-backend"
+version = "0.1.0"
+description = "Backend API for Boomi Builder"
+requires-python = ">=3.13,<3.14"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

@@ -1,0 +1,91 @@
+# ============================================================
+# Boomi Builder
+# ============================================================
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.vite/
+coverage/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.secret
+*.secrets
+secrets/
+**/secrets/
+
+# Certificates / keys
+*.pem
+*.key
+*.pfx
+*.p12
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Runtime data
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Project runtime/import data
+data/*
+!data/.gitkeep
+
+projects/*
+!projects/.gitkeep
+
+# Generated execution artifacts
+**/exports/
+**/backups/
+**/templates/
+**/checkpoints/
+
+# Local application configuration
+config/local.*
+config/*.local.*
+
+# Boomi credential material
+**/*token*
+**/*credential*
+**/*password*
+
+# IMPORTANT:
+# engine source and baseline documentation are intentionally tracked.
