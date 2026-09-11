@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 from boomi_builder.adapters.boomi_engine import (
     BoomiEngineAdapter,
@@ -134,6 +135,79 @@ def get_command(
     return 0
 
 
+def definition_command(
+    *,
+    connection_id: str,
+    component_id: str,
+) -> int:
+    (
+        paths,
+        _secret_store,
+        repository,
+        connection_service,
+        _lifecycle_service,
+        engine,
+    ) = build_runtime()
+
+    connection = repository.get(
+        connection_id
+    )
+
+    environment = (
+        connection_service.resolve_runtime_environment(
+            connection
+        )
+    )
+
+    definition = engine.get_component_definition(
+        workspace=paths.data_root,
+        component_id=component_id,
+        environment=environment,
+    )
+
+    definition_root = (
+        paths.data_root
+        / "discovery"
+        / definition.component_id
+    )
+
+    definition_root.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    definition_path = (
+        definition_root
+        / "component.xml"
+    )
+
+    _write_utf8_text(
+        definition_path,
+        definition.xml,
+    )
+
+    print()
+    print("Boomi component definition downloaded.")
+    print(f"Component ID : {definition.component_id}")
+    print(f"Name         : {definition.name}")
+    print(f"Type         : {definition.type}")
+    print(f"Version      : {definition.version}")
+    print(f"File         : {definition_path}")
+
+    return 0
+
+
+def _write_utf8_text(
+    path: Path,
+    content: str,
+) -> None:
+    path.write_text(
+        content,
+        encoding="utf-8",
+        newline="",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="boomi-builder-dev",
@@ -169,6 +243,21 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
     )
 
+    definition_parser = subparsers.add_parser(
+        "definition",
+        help="Download one Boomi component definition.",
+    )
+
+    definition_parser.add_argument(
+        "--connection-id",
+        required=True,
+    )
+
+    definition_parser.add_argument(
+        "--component-id",
+        required=True,
+    )
+
     return parser
 
 
@@ -183,6 +272,12 @@ def main() -> int:
 
     if args.command == "get":
         return get_command(
+            connection_id=args.connection_id,
+            component_id=args.component_id,
+        )
+
+    if args.command == "definition":
+        return definition_command(
             connection_id=args.connection_id,
             component_id=args.component_id,
         )
