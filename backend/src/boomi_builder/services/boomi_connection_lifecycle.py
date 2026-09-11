@@ -28,6 +28,40 @@ class BoomiConnectionRollbackError(RuntimeError):
         self.rollback_error = rollback_error
 
 
+class BoomiConnectionDeleteError(RuntimeError):
+    def __init__(
+        self,
+        *,
+        connection: BoomiConnection,
+        secret_error: Exception,
+    ) -> None:
+        super().__init__(
+            "Boomi connection secret deletion failed. "
+            "Connection metadata was restored."
+        )
+
+        self.connection = connection
+        self.secret_error = secret_error
+
+
+class BoomiConnectionDeleteRollbackError(RuntimeError):
+    def __init__(
+        self,
+        *,
+        connection: BoomiConnection,
+        secret_error: Exception,
+        metadata_restore_error: Exception,
+    ) -> None:
+        super().__init__(
+            "Boomi connection secret deletion failed and "
+            "connection metadata restoration also failed."
+        )
+
+        self.connection = connection
+        self.secret_error = secret_error
+        self.metadata_restore_error = metadata_restore_error
+
+
 class BoomiConnectionLifecycleService:
     def __init__(
         self,
@@ -71,3 +105,41 @@ class BoomiConnectionLifecycleService:
             raise
 
         return connection
+
+    def delete_connection(
+        self,
+        connection_id: str,
+    ) -> None:
+        if not connection_id.strip():
+            raise ValueError(
+                "connection_id must not be empty."
+            )
+
+        connection = self.repository.get(
+            connection_id
+        )
+
+        self.repository.delete(
+            connection_id
+        )
+
+        try:
+            self.connection_service.secret_store.delete_secret(
+                connection.secret_reference
+            )
+        except Exception as secret_error:
+            try:
+                self.repository.add(
+                    connection
+                )
+            except Exception as metadata_restore_error:
+                raise BoomiConnectionDeleteRollbackError(
+                    connection=connection,
+                    secret_error=secret_error,
+                    metadata_restore_error=metadata_restore_error,
+                ) from secret_error
+
+            raise BoomiConnectionDeleteError(
+                connection=connection,
+                secret_error=secret_error,
+            ) from secret_error

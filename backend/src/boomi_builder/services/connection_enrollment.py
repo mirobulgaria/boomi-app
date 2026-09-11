@@ -32,6 +32,16 @@ class ConnectionEnrollment:
             "BOOMI_USERNAME: "
         ).strip()
 
+        self._reject_surrounding_quotes(
+            field_name="BOOMI_ACCOUNT_ID",
+            value=account_id,
+        )
+
+        self._reject_surrounding_quotes(
+            field_name="BOOMI_USERNAME",
+            value=boomi_username,
+        )
+
         api_token = getpass(
             "BOOMI_API_TOKEN: "
         )
@@ -51,3 +61,28 @@ class ConnectionEnrollment:
             )
         finally:
             api_token = ""
+
+    @staticmethod
+    def _reject_surrounding_quotes(
+        *,
+        field_name: str,
+        value: str,
+    ) -> None:
+        if len(value) < 2:
+            return
+
+        double_quoted = (
+            value.startswith('"')
+            and value.endswith('"')
+        )
+
+        single_quoted = (
+            value.startswith("'")
+            and value.endswith("'")
+        )
+
+        if double_quoted or single_quoted:
+            raise ValueError(
+                f"{field_name} must be entered "
+                f"without surrounding quotes."
+            )
