@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
@@ -29,6 +30,15 @@ class BoomiComponentResult:
     deleted: bool
     folder_full_path: str
     branch_name: str
+
+
+@dataclass(frozen=True)
+class BoomiComponentDefinitionResult:
+    component_id: str
+    name: str
+    type: str
+    version: int
+    xml: str
 
 
 class BoomiEngineError(RuntimeError):
@@ -69,16 +79,10 @@ class BoomiEngineAdapter:
         component_id: str,
         environment: Mapping[str, str],
     ) -> BoomiComponentResult:
-        resolved_workspace = workspace.resolve()
-
-        if not resolved_workspace.is_dir():
-            raise ValueError(
-                f"Workspace directory was not found: "
-                f"{resolved_workspace}"
-            )
-
-        if not component_id.strip():
-            raise ValueError("component_id must not be empty.")
+        resolved_workspace = self._validate_request(
+            workspace=workspace,
+            component_id=component_id,
+        )
 
         result = self.runner.run_script(
             self.paths.boomi_cli_path,
@@ -96,7 +100,10 @@ class BoomiEngineAdapter:
             environment=environment,
         )
 
-        self._validate_process_result(result)
+        self._validate_process_result(
+            result,
+            operation="get",
+        )
 
         try:
             payload = json.loads(result.stdout)
@@ -136,6 +143,11 @@ class BoomiEngineAdapter:
         self._require_string(data, "folderFullPath")
         self._require_string(data, "branchName")
 
+        if data["componentId"] != component_id:
+            raise BoomiEngineContractError(
+                "Embedded Boomi CLI returned a different component ID."
+            )
+
         return BoomiComponentResult(
             component_id=data["componentId"],
             name=data["name"],
@@ -147,13 +159,142 @@ class BoomiEngineAdapter:
             branch_name=data["branchName"],
         )
 
+    def get_component_definition(
+        self,
+        *,
+        workspace: Path,
+        component_id: str,
+        environment: Mapping[str, str],
+    ) -> BoomiComponentDefinitionResult:
+        resolved_workspace = self._validate_request(
+            workspace=workspace,
+            component_id=component_id,
+        )
+
+        result = self.runner.run_script(
+            self.paths.boomi_cli_path,
+            arguments=[
+                "get-definition",
+                "-Workspace",
+                str(resolved_workspace),
+                "-Id",
+                component_id,
+                "-OutputFormat",
+                "xml",
+                "-RuntimeMode",
+                "app-readonly",
+            ],
+            environment=environment,
+        )
+
+        self._validate_process_result(
+            result,
+            operation="get-definition",
+        )
+
+        xml_text = result.stdout
+
+        try:
+            root = ET.fromstring(xml_text)
+        except ET.ParseError as exc:
+            raise BoomiEngineContractError(
+                "Embedded Boomi CLI returned invalid component XML."
+            ) from exc
+
+        if self._local_name(root.tag) != "Component":
+            raise BoomiEngineContractError(
+                "Embedded Boomi CLI XML root must be Component."
+            )
+
+        actual_component_id = root.attrib.get(
+            "componentId",
+            "",
+        )
+
+        if actual_component_id != component_id:
+            raise BoomiEngineContractError(
+                "Embedded Boomi CLI returned a different component ID."
+            )
+
+        name = root.attrib.get("name", "")
+        component_type = root.attrib.get("type", "")
+        version_text = root.attrib.get("version", "")
+
+        if not name:
+            raise BoomiEngineContractError(
+                "Component XML attribute 'name' is missing."
+            )
+
+        if not component_type:
+            raise BoomiEngineContractError(
+                "Component XML attribute 'type' is missing."
+            )
+
+        try:
+            version = int(version_text)
+        except ValueError as exc:
+            raise BoomiEngineContractError(
+                "Component XML attribute 'version' "
+                "must be an integer."
+            ) from exc
+
+        object_node = next(
+            (
+                child
+                for child in root
+                if self._local_name(child.tag) == "object"
+            ),
+            None,
+        )
+
+        if object_node is None:
+            raise BoomiEngineContractError(
+                "Component XML object element is missing."
+            )
+
+        if len(object_node) == 0:
+            raise BoomiEngineContractError(
+                "Component XML object contains no definition."
+            )
+
+        return BoomiComponentDefinitionResult(
+            component_id=actual_component_id,
+            name=name,
+            type=component_type,
+            version=version,
+            xml=xml_text,
+        )
+
+    @staticmethod
+    def _validate_request(
+        *,
+        workspace: Path,
+        component_id: str,
+    ) -> Path:
+        resolved_workspace = workspace.resolve()
+
+        if not resolved_workspace.is_dir():
+            raise ValueError(
+                f"Workspace directory was not found: "
+                f"{resolved_workspace}"
+            )
+
+        if not component_id.strip():
+            raise ValueError(
+                "component_id must not be empty."
+            )
+
+        return resolved_workspace
+
     @staticmethod
     def _validate_process_result(
         result: ProcessResult,
+        *,
+        operation: str,
     ) -> None:
         if result.exit_code != 0:
             raise BoomiEngineExecutionError(
-                "Embedded Boomi CLI get operation failed."
+                f"Embedded Boomi CLI {operation} operation failed."
             )
 
         if result.stderr:
@@ -165,6 +306,13 @@ class BoomiEngineAdapter:
             raise BoomiEngineContractError(
                 "Embedded Boomi CLI returned empty stdout."
             )
+
+    @staticmethod
+    def _local_name(tag: str) -> str:
+        if "}" in tag:
+            return tag.rsplit("}", 1)[1]
+
+        return tag
 
     @staticmethod
     def _require_string(
@@ -186,8 +334,6 @@ class BoomiEngineAdapter:
     ) -> None:
         value = data.get(field)
 
-        # bool is a subclass of int in Python, therefore it must
-        # be rejected explicitly.
         if isinstance(value, bool) or not isinstance(value, int):
             raise BoomiEngineContractError(
                 f"Embedded Boomi CLI field '{field}' "

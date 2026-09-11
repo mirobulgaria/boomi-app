@@ -1,7 +1,35 @@
 from pathlib import Path
 
+import pytest
+
 from boomi_builder.adapters.powershell_runner import PowerShellRunner
 from boomi_builder.settings import get_app_paths
+
+
+APP_READONLY_ALLOWED_COMMANDS = {
+    "get",
+    "get-definition",
+}
+
+
+APP_READONLY_BLOCKED_COMMANDS = [
+    "search",
+    "export",
+    "inspect",
+    "list-environments",
+    "get-environment-extensions",
+    "create-preview",
+    "create",
+    "create-empty-process",
+    "set-label",
+    "clone-process",
+    "set-process-call",
+    "clone-component",
+    "set-map",
+    "set-connector",
+    "delete",
+    "restore",
+]
 
 
 def test_app_readonly_blocks_delete_before_authentication(
@@ -35,13 +63,11 @@ def test_app_readonly_blocks_delete_before_authentication(
     assert "APP READ-ONLY SAFETY BLOCK" in combined
     assert "delete" in combined
 
-    # The safety guard must execute before workspace config.
     assert (
         "Workspace configuration file was not found"
         not in combined
     )
 
-    # The safety guard must execute before authentication.
     assert "BOOMI_ACCOUNT_ID is missing" not in combined
     assert "BOOMI_USERNAME is missing" not in combined
 
@@ -76,50 +102,67 @@ def test_app_readonly_get_skips_workspace_config_and_reaches_auth(
 
     assert result.exit_code != 0
 
-    # app-readonly/get is explicitly allowed.
     assert "APP READ-ONLY SAFETY BLOCK" not in combined
 
-    # Full workspace configuration must have been skipped.
     assert (
         "Workspace configuration file was not found"
         not in combined
     )
 
-    # Synthetic process-level account and username must have
-    # passed their authentication validation.
     assert "BOOMI_ACCOUNT_ID is missing" not in combined
     assert "BOOMI_USERNAME is missing" not in combined
 
-    # With no runtime token and no DPAPI file in the temporary
-    # workspace, authentication must stop here, before any
-    # Boomi HTTP request can occur.
     assert "DPAPI token file not found" in combined
 
-import pytest
+
+def test_app_readonly_get_definition_skips_workspace_config_and_reaches_auth(
+    tmp_path: Path,
+) -> None:
+    paths = get_app_paths()
+    runner = PowerShellRunner(timeout_seconds=10)
+
+    result = runner.run_script(
+        paths.boomi_cli_path,
+        arguments=[
+            "get-definition",
+            "-Workspace",
+            str(tmp_path),
+            "-Id",
+            "00000000-1111-2222-3333-444444444444",
+            "-OutputFormat",
+            "xml",
+            "-RuntimeMode",
+            "app-readonly",
+        ],
+        environment={
+            "BOOMI_ACCOUNT_ID": "APP_READONLY_TEST_ACCOUNT",
+            "BOOMI_USERNAME": "app-readonly-test@example.invalid",
+            "BOOMI_API_TOKEN": "",
+        },
+    )
+
+    combined = result.stdout + result.stderr
+
+    assert result.exit_code != 0
+
+    assert "APP READ-ONLY SAFETY BLOCK" not in combined
+
+    assert (
+        "Workspace configuration file was not found"
+        not in combined
+    )
+
+    assert "BOOMI_ACCOUNT_ID is missing" not in combined
+    assert "BOOMI_USERNAME is missing" not in combined
+
+    assert "DPAPI token file not found" in combined
 
 
 @pytest.mark.parametrize(
     "command",
-    [
-        "search",
-        "export",
-        "inspect",
-        "list-environments",
-        "get-environment-extensions",
-        "create-preview",
-        "create",
-        "create-empty-process",
-        "set-label",
-        "clone-process",
-        "set-process-call",
-        "clone-component",
-        "set-map",
-        "set-connector",
-        "delete",
-        "restore",
-    ],
+    APP_READONLY_BLOCKED_COMMANDS,
 )
-def test_app_readonly_blocks_every_command_except_get(
+def test_app_readonly_blocks_every_non_allowed_command(
     tmp_path: Path,
     command: str,
 ) -> None:
@@ -147,17 +190,33 @@ def test_app_readonly_blocks_every_command_except_get(
     assert result.exit_code != 0
 
     assert "APP READ-ONLY SAFETY BLOCK" in combined
-    assert f"Command:\n{command}" in combined.replace("\r\n", "\n")
 
-    # Must fail before full workspace configuration.
+    normalized = combined.replace(
+        "\r\n",
+        "\n",
+    )
+
+    assert f"Command:\n{command}" in normalized
+
     assert (
         "Workspace configuration file was not found"
         not in combined
     )
 
-    # Must fail before authentication.
     assert "BOOMI_ACCOUNT_ID is missing" not in combined
     assert "BOOMI_USERNAME is missing" not in combined
 
-    # It must therefore never reach command-specific validation.
     assert f"{command} requires" not in combined
+
+
+def test_app_readonly_allowlist_is_exact() -> None:
+    assert APP_READONLY_ALLOWED_COMMANDS == {
+        "get",
+        "get-definition",
+    }
+
+    assert set(
+        APP_READONLY_BLOCKED_COMMANDS
+    ).isdisjoint(
+        APP_READONLY_ALLOWED_COMMANDS
+    )

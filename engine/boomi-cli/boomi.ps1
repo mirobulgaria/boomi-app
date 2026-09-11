@@ -3,6 +3,7 @@ param(
     [ValidateSet(
         "search",
         "get",
+        "get-definition",
         "export",
         "inspect",
         "list-environments",
@@ -61,7 +62,8 @@ param(
     [Parameter()]
     [ValidateSet(
         "human",
-        "json"
+        "json",
+        "xml"
     )]
     [string]$OutputFormat = "human",
 
@@ -78,13 +80,6 @@ $ErrorActionPreference = "Stop"
 
 # ============================================================
 # CLI root
-#
-# The CLI root is the installation directory containing:
-#
-#   boomi.ps1
-#   lib\
-#
-# It is independent from the active project workspace.
 # ============================================================
 
 $CliRoot = $PSScriptRoot
@@ -94,7 +89,6 @@ if ([string]::IsNullOrWhiteSpace($CliRoot)) {
 }
 
 try {
-
     $CliRoot = (
         Resolve-Path `
             -LiteralPath $CliRoot `
@@ -102,7 +96,6 @@ try {
     ).Path
 }
 catch {
-
     throw "CLI STARTUP ERROR: Unable to resolve CLI root directory."
 }
 
@@ -111,11 +104,6 @@ $script:CliRoot = $CliRoot
 
 # ============================================================
 # Workspace root
-#
-# Workspace is mandatory.
-#
-# Project configuration, secrets, specifications and generated
-# artifacts belong to the workspace, not to the CLI engine.
 # ============================================================
 
 if ([string]::IsNullOrWhiteSpace($Workspace)) {
@@ -123,7 +111,6 @@ if ([string]::IsNullOrWhiteSpace($Workspace)) {
 }
 
 try {
-
     $WorkspaceRoot = (
         Resolve-Path `
             -LiteralPath $Workspace `
@@ -131,7 +118,6 @@ try {
     ).Path
 }
 catch {
-
     throw "CLI STARTUP ERROR: Workspace directory was not found: $Workspace"
 }
 
@@ -144,9 +130,6 @@ $script:WorkspaceRoot = $WorkspaceRoot
 
 # ============================================================
 # Load reusable CLI engine modules
-#
-# IMPORTANT:
-# Modules are always loaded from CliRoot, never WorkspaceRoot.
 # ============================================================
 
 $LibRoot = Join-Path `
@@ -186,14 +169,14 @@ if (-not (Test-Path -LiteralPath $LibRoot -PathType Container)) {
 # The safety check runs before workspace configuration,
 # authentication and command dispatch.
 #
-# For the current application contract, only "get" is
-# permitted in app-readonly mode.
+# Only explicitly approved read contracts are permitted.
 # ============================================================
 
 if ($RuntimeMode -eq "app-readonly") {
 
     $AppReadOnlyCommands = @(
-        "get"
+        "get",
+        "get-definition"
     )
 
     if ($Command -notin $AppReadOnlyCommands) {
@@ -219,17 +202,6 @@ No Boomi API operation was performed.
 
 # ============================================================
 # Workspace configuration
-#
-# workspace mode:
-#   Full workspace configuration is mandatory.
-#
-# app-readonly mode:
-#   Full write/branch configuration is intentionally skipped.
-#   The workspace directory itself remains mandatory.
-#
-# IMPORTANT:
-# This does NOT weaken Read-BoomiCliConfig validation.
-# Full configuration remains mandatory in workspace mode.
 # ============================================================
 
 if ($RuntimeMode -eq "workspace") {
@@ -301,6 +273,20 @@ switch ($Command) {
         }
     }
 
+    "get-definition" {
+
+        if ([string]::IsNullOrWhiteSpace($Id)) {
+            throw "get-definition requires -Id"
+        }
+
+        if ($OutputFormat -ne "xml") {
+            throw "get-definition requires -OutputFormat xml"
+        }
+
+        Get-BoomiComponentDefinitionXml `
+            -Id $Id
+    }
+
     "export" {
 
         if ([string]::IsNullOrWhiteSpace($Id)) {
@@ -322,7 +308,6 @@ switch ($Command) {
     }
 
     "list-environments" {
-
         Show-BoomiEnvironments
     }
 

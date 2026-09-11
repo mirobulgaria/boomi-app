@@ -8,6 +8,7 @@
 # READ capabilities:
 #   search
 #   get
+#   get-definition
 #   export
 #   inspect
 #   list-environments
@@ -57,6 +58,7 @@ function Search-BoomiComponent {
     }
 }
 
+
 function Write-BoomiComponentHuman {
 
     param(
@@ -93,6 +95,7 @@ function Show-BoomiComponent {
         -Component $component
 }
 
+
 function Convert-BoomiComponentInfoToJson {
 
     param(
@@ -121,6 +124,49 @@ function Convert-BoomiComponentInfoToJson {
                 -Depth 10 `
                 -Compress
     )
+}
+
+
+function Get-BoomiComponentDefinitionXml {
+
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Id
+    )
+
+    $response = Get-BoomiComponentXml `
+        -ComponentId $Id
+
+    if (
+        $null -eq $response -or
+        [string]::IsNullOrWhiteSpace(
+            [string]$response.Content
+        )
+    ) {
+        throw "Boomi component definition was empty."
+    }
+
+    [xml]$xml = $response.Content
+
+    if ($null -eq $xml.Component) {
+        throw "Boomi component definition root was not Component."
+    }
+
+    $actualId = [string]$xml.Component.componentId
+
+    if ($actualId -ne $Id) {
+        throw "Boomi component definition ID did not match the requested ID."
+    }
+
+    if ($null -eq $xml.Component.object) {
+        throw "Boomi component definition object was not found."
+    }
+
+    # Write the raw Component XML to the success output stream.
+    #
+    # Do not use Write-Host here. The application consumes stdout
+    # as a machine-readable XML contract.
+    return [string]$response.Content
 }
 
 
@@ -303,9 +349,6 @@ function Inspect-BoomiProcess {
 
 # ============================================================
 # Environment query helper
-#
-# Windows PowerShell 5.1 compatibility:
-# use normal PowerShell arrays instead of generic List[object].
 # ============================================================
 
 function Get-BoomiEnvironmentsByClassification {
@@ -343,11 +386,6 @@ function Get-BoomiEnvironmentsByClassification {
             }
         }
     }
-
-    # --------------------------------------------------------
-    # Preserve queryToken handling.
-    # This path is used only if Boomi returns another page.
-    # --------------------------------------------------------
 
     $queryToken = [string]$response.queryToken
 
