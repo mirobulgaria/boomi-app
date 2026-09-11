@@ -1,91 +1,243 @@
 # ============================================================
 # Boomi Builder
+# Repository ignore policy
 # ============================================================
 
-# Python
-__pycache__/
-*.py[cod]
-*.pyd
-*.so
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
 
+# ------------------------------------------------------------
 # Python virtual environments
+# ------------------------------------------------------------
+
 .venv/
 venv/
 env/
+ENV/
 
-# Node / frontend
-node_modules/
-dist/
+
+# ------------------------------------------------------------
+# Python bytecode / caches
+# ------------------------------------------------------------
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+
+.coverage
+.coverage.*
+htmlcov/
+
+
+# ------------------------------------------------------------
+# Python packaging / build artifacts
+# ------------------------------------------------------------
+
+*.egg
+*.egg-info/
+.eggs/
+
 build/
-.vite/
-coverage/
+dist/
 
-# Environment / secrets
+pip-wheel-metadata/
+
+
+# ------------------------------------------------------------
+# Python tooling
+# ------------------------------------------------------------
+
+.tox/
+.nox/
+
+*.log
+
+
+# ------------------------------------------------------------
+# Environment / local configuration
+#
+# Do not commit runtime environment variables or local secrets.
+# ------------------------------------------------------------
+
 .env
 .env.*
 !.env.example
-*.secret
-*.secrets
+
+*.local
+
+
+# ------------------------------------------------------------
+# Secrets / credentials
+#
+# Never commit plaintext or protected operational credentials.
+# ------------------------------------------------------------
+
 secrets/
 **/secrets/
 
-# Certificates / keys
-*.pem
-*.key
-*.pfx
-*.p12
+*.dpapi
+*.secret
+*.secrets
 
-# Local databases
-*.db
-*.sqlite
-*.sqlite3
+credentials.json
+credentials.*.json
 
-# Runtime data
-logs/
-*.log
 
-# Temporary files
-tmp/
-temp/
-*.tmp
+# ------------------------------------------------------------
+# Runtime application data
+#
+# data/.gitkeep is intentionally tracked.
+#
+# This includes:
+#
+#   data/connections.json
+#   data/secrets/
+#   future operational application state
+#
+# ------------------------------------------------------------
 
-# IDE / editor
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# Project runtime/import data
 data/*
 !data/.gitkeep
+
+
+# ------------------------------------------------------------
+# Local project runtime data
+#
+# projects/.gitkeep is intentionally tracked.
+#
+# Project-specific runtime workspaces, generated artifacts,
+# imported evidence and operational state must not be committed
+# by default.
+# ------------------------------------------------------------
 
 projects/*
 !projects/.gitkeep
 
-# Generated execution artifacts
+
+# ------------------------------------------------------------
+# Runtime logs
+# ------------------------------------------------------------
+
+logs/*
+!logs/.gitkeep
+
+
+# ------------------------------------------------------------
+# Temporary / backup files
+# ------------------------------------------------------------
+
+*.tmp
+*.temp
+*.bak
+*.backup
+*.swp
+*.swo
+
+*~
+~$*
+
+
+# ------------------------------------------------------------
+# Databases / local persistence
+# ------------------------------------------------------------
+
+*.db
+*.sqlite
+*.sqlite3
+
+
+# ------------------------------------------------------------
+# Generated exports / backups
+# ------------------------------------------------------------
+
+exports/
+backups/
+
 **/exports/
 **/backups/
-**/templates/
-**/checkpoints/
 
-# Local application configuration
-config/local.*
-config/*.local.*
 
-# Boomi credential material
-**/*token*
-**/*credential*
-**/*password*
+# ------------------------------------------------------------
+# Test-generated artifacts
+# ------------------------------------------------------------
 
+coverage.xml
+
+test-results/
+pytest-report/
+
+
+# ------------------------------------------------------------
+# IDE / editor metadata
+# ------------------------------------------------------------
+
+.vscode/
+.idea/
+
+*.code-workspace
+
+.vs/
+
+
+# ------------------------------------------------------------
+# Windows
+# ------------------------------------------------------------
+
+Thumbs.db
+Thumbs.db:encryptable
+Desktop.ini
+
+$RECYCLE.BIN/
+
+
+# ------------------------------------------------------------
+# macOS
+# ------------------------------------------------------------
+
+.DS_Store
+.AppleDouble
+.LSOverride
+
+
+# ------------------------------------------------------------
+# Local engine checkpoints
+#
+# Git history is the authoritative source/version history.
+#
+# Manual engine snapshots may be retained locally for
+# development recovery but must not be committed.
+#
 # IMPORTANT:
-# engine source and baseline documentation are intentionally tracked.
+# Only engine/checkpoints/ is ignored.
+# The embedded engine itself remains version-controlled.
+# ------------------------------------------------------------
+
+engine/checkpoints/
+
+
+# ------------------------------------------------------------
+# IMPORTANT
+#
+# The embedded Boomi CLI engine is intentionally versioned:
+#
+#   engine/boomi-cli/
+#
+# The engine baseline files are intentionally versioned:
+#
+#   engine/BASELINE.md
+#   engine/BASELINE_SHA256SUMS.txt
+#
+# Application source and architecture documentation are also
+# intentionally versioned.
+#
+# Do NOT add broad rules such as:
+#
+#   engine/
+#   backend/
+#   docs/
+#
+# ------------------------------------------------------------
