@@ -56,7 +56,14 @@ param(
     [string]$EnvironmentId,
 
     [Parameter()]
-    [string]$SpecPath
+    [string]$SpecPath,
+
+    [Parameter()]
+    [ValidateSet(
+        "human",
+        "json"
+    )]
+    [string]$OutputFormat = "human"
 )
 
 $ErrorActionPreference = "Stop"
@@ -221,8 +228,16 @@ switch ($Command) {
             throw "get requires -Id"
         }
 
-        Show-BoomiComponent `
-            -Id $Id
+        if ($OutputFormat -eq "json") {
+            $component = Get-BoomiComponentInfo `
+                -ComponentId $Id
+            Convert-BoomiComponentInfoToJson `
+                -Component $component
+        }
+        else {
+            Show-BoomiComponent `
+                -Id $Id
+        }
     }
 
     "export" {

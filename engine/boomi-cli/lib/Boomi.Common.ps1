@@ -349,11 +349,18 @@ function Get-BoomiComponentInfo {
     $component = $xml.Component
 
     return [PSCustomObject]@{
-        Id      = [string]$component.componentId
-        Name    = [string]$component.name
-        Type    = [string]$component.type
-        Folder  = [string]$component.folderFullPath
-        Version = [string]$component.version
+        ComponentId    = [string]$component.componentId
+        Name           = [string]$component.name
+        Type           = [string]$component.type
+        Version        = [int]$component.version
+        CurrentVersion = (
+            [string]$component.currentVersion -eq "true"
+        )
+        Deleted        = (
+            [string]$component.deleted -eq "true"
+        )
+        FolderFullPath = [string]$component.folderFullPath
+        BranchName     = [string]$component.branchName
     }
 }
 

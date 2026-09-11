@@ -57,6 +57,27 @@ function Search-BoomiComponent {
     }
 }
 
+function Write-BoomiComponentHuman {
+
+    param(
+        [Parameter(Mandatory=$true)]
+        [PSObject]$Component
+    )
+
+    Write-Host ""
+    Write-Host "Boomi Component"
+    Write-Host "==============="
+    Write-Host "Name            : $($Component.Name)"
+    Write-Host "Type            : $($Component.Type)"
+    Write-Host "Component ID    : $($Component.ComponentId)"
+    Write-Host "Version         : $($Component.Version)"
+    Write-Host "Current Version : $($Component.CurrentVersion.ToString().ToLowerInvariant())"
+    Write-Host "Deleted         : $($Component.Deleted.ToString().ToLowerInvariant())"
+    Write-Host "Folder          : $($Component.FolderFullPath)"
+    Write-Host "Branch          : $($Component.BranchName)"
+    Write-Host ""
+}
+
 
 function Show-BoomiComponent {
 
@@ -65,24 +86,41 @@ function Show-BoomiComponent {
         [string]$Id
     )
 
-    $response = Get-BoomiComponentXml `
+    $component = Get-BoomiComponentInfo `
         -ComponentId $Id
 
-    [xml]$xml = $response.Content
-    $component = $xml.Component
+    Write-BoomiComponentHuman `
+        -Component $component
+}
 
-    Write-Host ""
-    Write-Host "Boomi Component"
-    Write-Host "==============="
-    Write-Host "Name            : $($component.name)"
-    Write-Host "Type            : $($component.type)"
-    Write-Host "Component ID    : $($component.componentId)"
-    Write-Host "Version         : $($component.version)"
-    Write-Host "Current Version : $($component.currentVersion)"
-    Write-Host "Deleted         : $($component.deleted)"
-    Write-Host "Folder          : $($component.folderFullPath)"
-    Write-Host "Branch          : $($component.branchName)"
-    Write-Host ""
+function Convert-BoomiComponentInfoToJson {
+
+    param(
+        [Parameter(Mandatory=$true)]
+        [PSObject]$Component
+    )
+
+    $result = [ordered]@{
+        success   = $true
+        operation = "get"
+        data      = [ordered]@{
+            componentId    = [string]$Component.ComponentId
+            name           = [string]$Component.Name
+            type           = [string]$Component.Type
+            version        = [int]$Component.Version
+            currentVersion = [bool]$Component.CurrentVersion
+            deleted        = [bool]$Component.Deleted
+            folderFullPath = [string]$Component.FolderFullPath
+            branchName     = [string]$Component.BranchName
+        }
+    }
+
+    return (
+        $result |
+            ConvertTo-Json `
+                -Depth 10 `
+                -Compress
+    )
 }
 
 
