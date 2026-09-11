@@ -32,6 +32,7 @@ class PowerShellRunner:
         script_path: Path,
         arguments: Sequence[str] = (),
         environment: Mapping[str, str] | None = None,
+        stdin_text: str | None = None,
     ) -> ProcessResult:
         resolved_script = script_path.resolve()
 
@@ -60,6 +61,7 @@ class PowerShellRunner:
         try:
             completed = subprocess.run(
                 command,
+                input=stdin_text,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
