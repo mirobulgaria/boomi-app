@@ -1,28 +1,19 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from getpass import getpass
 
 from boomi_builder.domain.boomi_connection import BoomiConnection
-from boomi_builder.services.boomi_connection_service import (
-    BoomiConnectionService,
+from boomi_builder.services.boomi_connection_lifecycle import (
+    BoomiConnectionLifecycleService,
 )
-
-
-@dataclass(frozen=True)
-class EnrollmentInput:
-    owner_user_id: str
-    connection_name: str
-    account_id: str
-    boomi_username: str
 
 
 class ConnectionEnrollment:
     def __init__(
         self,
-        connection_service: BoomiConnectionService,
+        lifecycle_service: BoomiConnectionLifecycleService,
     ) -> None:
-        self.connection_service = connection_service
+        self.lifecycle_service = lifecycle_service
 
     def enroll_interactively(
         self,
@@ -51,7 +42,7 @@ class ConnectionEnrollment:
             )
 
         try:
-            return self.connection_service.create_connection(
+            return self.lifecycle_service.create_and_persist(
                 owner_user_id=owner_user_id,
                 name=connection_name,
                 account_id=account_id,

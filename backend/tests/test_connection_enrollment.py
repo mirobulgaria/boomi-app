@@ -1,7 +1,14 @@
+from pathlib import Path
 from unittest.mock import patch
 
 from boomi_builder.adapters.in_memory_secret_store import (
     InMemorySecretStore,
+)
+from boomi_builder.repositories.json_boomi_connection_repository import (
+    JsonBoomiConnectionRepository,
+)
+from boomi_builder.services.boomi_connection_lifecycle import (
+    BoomiConnectionLifecycleService,
 )
 from boomi_builder.services.boomi_connection_service import (
     BoomiConnectionService,
@@ -11,17 +18,27 @@ from boomi_builder.services.connection_enrollment import (
 )
 
 
-def test_interactive_enrollment_stores_secret_outside_connection(
+def test_interactive_enrollment_persists_metadata_and_secret(
+    tmp_path: Path,
     capsys,
 ) -> None:
     store = InMemorySecretStore()
 
-    service = BoomiConnectionService(
+    connection_service = BoomiConnectionService(
         store
     )
 
+    repository = JsonBoomiConnectionRepository(
+        tmp_path / "connections.json"
+    )
+
+    lifecycle = BoomiConnectionLifecycleService(
+        connection_service,
+        repository,
+    )
+
     enrollment = ConnectionEnrollment(
-        service
+        lifecycle
     )
 
     synthetic_token = (
@@ -52,11 +69,14 @@ def test_interactive_enrollment_stores_secret_outside_connection(
     assert synthetic_token not in captured.err
     assert synthetic_token not in repr(connection)
 
-    assert connection.name == "TEST Connection"
-    assert connection.account_id == "TEST_ACCOUNT"
-    assert (
-        connection.boomi_username
-        == "test.user@example.invalid"
+    persisted = repository.get(
+        connection.id
+    )
+
+    assert persisted == connection
+
+    assert store.exists(
+        connection.secret_reference
     )
 
     assert (
