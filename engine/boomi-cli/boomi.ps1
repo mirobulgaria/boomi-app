@@ -17,7 +17,7 @@ param(
         "set-map",
         "set-connector",
         "delete",
-	"restore"
+        "restore"
     )]
     [string]$Command,
 
@@ -63,7 +63,14 @@ param(
         "human",
         "json"
     )]
-    [string]$OutputFormat = "human"
+    [string]$OutputFormat = "human",
+
+    [Parameter()]
+    [ValidateSet(
+        "workspace",
+        "app-readonly"
+    )]
+    [string]$RuntimeMode = "workspace"
 )
 
 $ErrorActionPreference = "Stop"
@@ -171,19 +178,69 @@ if (-not (Test-Path -LiteralPath $LibRoot -PathType Container)) {
 
 
 # ============================================================
-# Workspace configuration
+# Runtime mode safety policy
 #
-# Configuration belongs to the active workspace, not to the
-# reusable CLI installation.
+# app-readonly is an explicit allowlist mode.
+#
+# IMPORTANT:
+# The safety check runs before workspace configuration,
+# authentication and command dispatch.
+#
+# For the current application contract, only "get" is
+# permitted in app-readonly mode.
 # ============================================================
 
-$CliConfigPath = Join-Path `
-    $WorkspaceRoot `
-    "config\cli.json"
+if ($RuntimeMode -eq "app-readonly") {
 
-if (-not (Test-Path -LiteralPath $CliConfigPath -PathType Leaf)) {
+    $AppReadOnlyCommands = @(
+        "get"
+    )
 
-    throw @"
+    if ($Command -notin $AppReadOnlyCommands) {
+
+        throw @"
+APP READ-ONLY SAFETY BLOCK.
+
+Command:
+$Command
+
+Runtime mode:
+app-readonly
+
+The command is not permitted in app-readonly mode.
+
+No workspace configuration was loaded.
+No Boomi authentication context was initialized.
+No Boomi API operation was performed.
+"@
+    }
+}
+
+
+# ============================================================
+# Workspace configuration
+#
+# workspace mode:
+#   Full workspace configuration is mandatory.
+#
+# app-readonly mode:
+#   Full write/branch configuration is intentionally skipped.
+#   The workspace directory itself remains mandatory.
+#
+# IMPORTANT:
+# This does NOT weaken Read-BoomiCliConfig validation.
+# Full configuration remains mandatory in workspace mode.
+# ============================================================
+
+if ($RuntimeMode -eq "workspace") {
+
+    $CliConfigPath = Join-Path `
+        $WorkspaceRoot `
+        "config\cli.json"
+
+    if (-not (Test-Path -LiteralPath $CliConfigPath -PathType Leaf)) {
+
+        throw @"
 CLI STARTUP ERROR: Workspace configuration file was not found.
 
 Workspace:
@@ -192,11 +249,12 @@ $WorkspaceRoot
 Expected:
 $CliConfigPath
 "@
-}
+    }
 
-Initialize-BoomiCliConfig `
-    -Path $CliConfigPath |
-    Out-Null
+    Initialize-BoomiCliConfig `
+        -Path $CliConfigPath |
+        Out-Null
+}
 
 
 # ============================================================
@@ -229,12 +287,15 @@ switch ($Command) {
         }
 
         if ($OutputFormat -eq "json") {
+
             $component = Get-BoomiComponentInfo `
                 -ComponentId $Id
+
             Convert-BoomiComponentInfoToJson `
                 -Component $component
         }
         else {
+
             Show-BoomiComponent `
                 -Id $Id
         }
