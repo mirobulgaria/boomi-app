@@ -21,6 +21,9 @@ from boomi_builder.services.boomi_connection_service import (
 from boomi_builder.services.boomi_discovery_service import (
     BoomiDiscoveryService,
 )
+from boomi_builder.services.boomi_transform_map_analyzer import (
+    BoomiTransformMapAnalyzer,
+)
 from boomi_builder.services.boomi_xml_profile_analyzer import (
     BoomiXmlProfileAnalyzer,
 )
@@ -300,20 +303,9 @@ def analyze_profile_command(
     *,
     component_id: str,
 ) -> int:
-    paths = get_app_paths()
-
-    component_path = (
-        paths.data_root
-        / "discovery"
-        / component_id
-        / "component.xml"
+    component_path = _local_component_path(
+        component_id
     )
-
-    if not component_path.is_file():
-        raise FileNotFoundError(
-            "Local component definition was not found: "
-            f"{component_path}"
-        )
 
     xml_text = component_path.read_text(
         encoding="utf-8",
@@ -355,6 +347,138 @@ def analyze_profile_command(
         )
 
     return 0
+
+
+def analyze_map_command(
+    *,
+    component_id: str,
+) -> int:
+    component_path = _local_component_path(
+        component_id
+    )
+
+    xml_text = component_path.read_text(
+        encoding="utf-8",
+    )
+
+    analysis = BoomiTransformMapAnalyzer().analyze(
+        xml_text
+    )
+
+    print()
+    print("Boomi transform map analysis")
+    print("============================")
+    print(f"Component ID             : {component_id}")
+    print(f"File                     : {component_path}")
+    print(
+        f"Source profile ID        : "
+        f"{analysis.source_profile_id}"
+    )
+    print(
+        f"Target profile ID        : "
+        f"{analysis.target_profile_id}"
+    )
+    print(
+        f"Source equals target     : "
+        f"{analysis.source_equals_target}"
+    )
+    print(
+        f"Mapping count            : "
+        f"{analysis.mapping_count}"
+    )
+    print(
+        f"Identity mapping count   : "
+        f"{analysis.identity_mapping_count}"
+    )
+    print(
+        f"All mappings identity    : "
+        f"{analysis.all_mappings_are_identity}"
+    )
+    print(
+        f"Optimize execution order : "
+        f"{analysis.optimize_execution_order}"
+    )
+
+    print()
+    print("Sections")
+    print("--------")
+
+    _print_map_section(
+        "Functions",
+        analysis.functions,
+    )
+
+    _print_map_section(
+        "Defaults",
+        analysis.defaults,
+    )
+
+    _print_map_section(
+        "DocumentCacheJoins",
+        analysis.document_cache_joins,
+    )
+
+    print()
+    print("Mappings")
+    print("--------")
+
+    for index, mapping in enumerate(
+        analysis.mappings,
+        start=1,
+    ):
+        print(
+            f"{index} | "
+            f"{_display_optional(mapping.from_type)} | "
+            f"{_display_optional(mapping.from_name_path)} "
+            f"-> "
+            f"{_display_optional(mapping.to_type)} | "
+            f"{_display_optional(mapping.to_name_path)} | "
+            f"identity={mapping.is_identity}"
+        )
+
+    return 0
+
+
+def _local_component_path(
+    component_id: str,
+) -> Path:
+    paths = get_app_paths()
+
+    component_path = (
+        paths.data_root
+        / "discovery"
+        / component_id
+        / "component.xml"
+    )
+
+    if not component_path.is_file():
+        raise FileNotFoundError(
+            "Local component definition was not found: "
+            f"{component_path}"
+        )
+
+    return component_path
+
+
+def _print_map_section(
+    name: str,
+    section,
+) -> None:
+    print(
+        f"{name:<18}: "
+        f"present={section.present} "
+        f"descendants="
+        f"{section.descendant_element_count}"
+    )
+
+
+def _display_optional(
+    value: str | None,
+) -> str:
+    if value is None:
+        return "<none>"
+
+    return value
 
 
 def _format_occurs(
@@ -462,6 +586,16 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
     )
 
+    analyze_map_parser = subparsers.add_parser(
+        "analyze-map",
+        help="Analyze a local discovered Boomi transform map.",
+    )
+
+    analyze_map_parser.add_argument(
+        "--component-id",
+        required=True,
+    )
+
     return parser
 
 
@@ -494,6 +628,11 @@ def main() -> int:
 
     if args.command == "analyze-profile":
         return analyze_profile_command(
+            component_id=args.component_id,
+        )
+
+    if args.command == "analyze-map":
+        return analyze_map_command(
             component_id=args.component_id,
         )
 
