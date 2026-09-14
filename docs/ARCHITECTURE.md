@@ -1,4 +1,4 @@
-﻿# Boomi Builder — Architecture v1
+# Boomi Builder — Architecture v1
 
 ## 1. Purpose
 
@@ -31,7 +31,248 @@ All Boomi changes must pass through deterministic application policy and the emb
 
 ---
 
-## 2. Existing proven execution engine
+## 2. Project-agnostic platform principle
+
+Boomi Builder is a generic Boomi integration engineering platform.
+
+It MUST NOT be designed specifically for the SAP ↔ ZTE integration or for any other individual integration project.
+
+The SAP ↔ ZTE project is the first real-world validation and acceptance project for the platform. Its components, contracts, structures and business rules provide test evidence, but they do not define the generic application model.
+
+A new integration project must be adoptable and analyzable without changing Boomi Builder source code merely because it has different:
+
+- systems or applications;
+- component names;
+- component IDs;
+- folders or branches;
+- XML element names;
+- profile structures;
+- field names;
+- mappings;
+- process structures;
+- connectors;
+- endpoints;
+- environments;
+- business identifiers;
+- business constants.
+
+Generic application code MUST NOT depend on project-specific identifiers or semantics.
+
+Examples of values that MUST NOT be hard-coded into generic analyzers, discovery services or application orchestration include:
+
+- ZTE;
+- SAP;
+- `ZDVMBG_MR_REQUEST`;
+- `ABLBELNR`;
+- `ISTABLART`;
+- `WA09`;
+- `WA10`;
+- project-specific Boomi component IDs;
+- project-specific endpoint values;
+- project-specific business constants.
+
+Such values may legitimately exist as:
+
+- discovered data;
+- project metadata;
+- evidence;
+- approved Desired State;
+- user decisions;
+- project-specific validation criteria.
+
+They MUST NOT exist as assumptions embedded in generic platform logic.
+
+### 2.1 Platform Facts, Project Context and Evidence / Business Interpretation
+
+Boomi Builder MUST keep three concerns separate.
+
+#### Platform Facts
+
+Platform Facts are facts authoritatively discovered from Boomi.
+
+Examples include:
+
+- component identity;
+- component type;
+- component version;
+- folder;
+- branch;
+- current/deleted state;
+- component definition;
+- profile structure;
+- element names;
+- cardinalities;
+- map source and target profiles;
+- mapping definitions;
+- process shapes;
+- component references;
+- dependency relationships;
+- connector configuration structure;
+- environment configuration where authoritatively available.
+
+Platform Facts describe what exists in Boomi.
+
+They do not by themselves establish what the business integration is intended to do.
+
+#### Project Context
+
+Project Context describes how discovered Boomi artifacts participate in a particular integration project.
+
+Examples include:
+
+- project;
+- scenario;
+- direction;
+- source system;
+- target system;
+- project environment;
+- adopted component role;
+- project-specific requirement;
+- project-specific contract.
+
+The same generic Boomi component analysis model may therefore be used by multiple unrelated projects.
+
+#### Evidence / Business Interpretation
+
+Evidence / Business Interpretation describes conclusions about what discovered information means for a specific integration.
+
+These conclusions MUST follow the Evidence Model and may be:
+
+- CONFIRMED;
+- SUPPORTING_CONTEXT;
+- TO_CONFIRM.
+
+A Platform Fact MUST NOT automatically become a business conclusion.
+
+For example, discovering that a Map has the same component ID in `fromProfile` and `toProfile` proves that the current Boomi Map references the same profile on both sides.
+
+It does not prove that this is the correct source-to-target contract for the integration.
+
+### 2.2 Generic component analysis
+
+Component analyzers MUST extract the structure actually present in a Boomi component.
+
+They MUST NOT require known project field names, component names, business identifiers or expected project hierarchies.
+
+For example, an XML Profile analyzer operates on generic `XMLElement` and `XMLAttribute` structures.
+
+It does not require knowledge of:
+
+- SAP IDoc segment names;
+- ZTE payload fields;
+- meter-reading identifiers;
+- project-specific field semantics.
+
+Likewise, a Map analyzer must analyze the mappings that actually exist in the Map rather than search for predefined project fields.
+
+A Process analyzer must analyze the shapes and relationships actually present in the Process rather than assume a predefined orchestration pattern.
+
+A Connector analyzer must analyze the connector representation actually present rather than assume a specific endpoint, authentication model or external system.
+
+Specialized analyzers may exist for different Boomi component types or representation variants, but those analyzers MUST remain project-independent.
+
+### 2.3 Data and structure agnosticism
+
+Profile structures, field names, mappings and process layouts are project data.
+
+They are not part of the generic Boomi Builder application schema.
+
+For example, one project may contain:
+
+Customer
+→ Orders
+→ Order
+→ Items
+
+while another project may contain:
+
+IDOC
+→ Segment
+→ Device
+→ Register
+
+Both must be handled by the same generic profile-analysis capability when represented by the same supported Boomi profile format.
+
+The application MUST discover and preserve the actual names and hierarchy rather than normalize them into a project-specific predefined model.
+
+The same principle applies to:
+
+- XML profiles;
+- JSON profiles;
+- flat-file profiles;
+- maps;
+- processes;
+- connectors;
+- operations;
+- environments;
+- other supported Boomi artifacts.
+
+### 2.4 Unsupported structures
+
+Boomi Builder is not required to understand every possible Boomi component representation from the first release.
+
+When a component type, structure or representation is not supported, the application MUST:
+
+- preserve the available evidence where safe and practical;
+- identify the component and its known metadata;
+- explicitly classify the analysis as unsupported or unresolved;
+- avoid inventing missing semantics;
+- avoid inferring behavior solely from names or superficial similarity.
+
+Support for a previously unknown Boomi representation may require a new generic platform capability.
+
+Adding a new integration project with different business data MUST NOT, by itself, require new application code.
+
+### 2.5 Generic and project acceptance testing
+
+Generic unit tests SHOULD use synthetic, project-neutral:
+
+- component names;
+- profile names;
+- element names;
+- field names;
+- mappings;
+- process structures;
+- identifiers.
+
+This helps prove that generic platform code does not depend on a particular project.
+
+Real project components may additionally be used as acceptance and regression evidence to prove that the generic implementation works against real Boomi structures.
+
+The SAP ↔ ZTE project is the first such real-world acceptance project.
+
+Project-specific acceptance tests MUST NOT cause project-specific business logic to leak into the generic platform implementation.
+
+### 2.6 Architectural acceptance criterion
+
+A new integration project with different:
+
+- profile structures;
+- field names;
+- maps;
+- processes;
+- connectors;
+- endpoints;
+- systems;
+- business semantics;
+
+must be able to follow the generic workflow:
+
+CREATE PROJECT
+→ CONNECT
+→ DISCOVER
+→ ANALYZE
+→ ADOPT
+
+without requiring changes to Boomi Builder source code solely because the business integration is different.
+
+Source-code changes are justified when Boomi Builder encounters a previously unsupported Boomi platform capability, component type or representation.
+
+They are not justified merely because a new project uses different business data.
+
+---
+
+## 3. Existing proven execution engine
 
 Embedded engine:
 
@@ -52,7 +293,7 @@ engine\BASELINE_SHA256SUMS.txt
 
 ---
 
-## 3. High-level architecture
+## 4. High-level architecture
 
 Browser UI
     |
@@ -76,6 +317,8 @@ Python + FastAPI
     |
     +--> Boomi Discovery Service
     |
+    +--> Component Analysis Services
+    |
     +--> Desired State Service
     |
     +--> Diff Engine
@@ -98,9 +341,13 @@ Python + FastAPI
               v
           Boomi Platform
 
+Component Analysis Services are responsible for deterministic, project-independent interpretation of supported Boomi component representations.
+
+Project-specific business interpretation is outside this generic analysis boundary.
+
 ---
 
-## 4. Fundamental state model
+## 5. Fundamental state model
 
 Boomi Builder maintains two independent states.
 
@@ -122,11 +369,17 @@ Examples:
 
 Actual State MUST NOT be inferred from project documentation.
 
+Actual State records discovered values as data.
+
+Project-specific component names, profile names, field names and structures are not application schema and MUST NOT be hard-coded into the generic domain model.
+
 ### Desired State
 
 What should exist according to approved requirements, contracts, evidence and decisions.
 
 Desired State MUST NOT silently contain unresolved assumptions.
+
+Project-specific requirements and business semantics belong in Desired State and project evidence, not in generic Boomi component analyzers.
 
 ### Diff
 
@@ -149,7 +402,7 @@ Possible classifications include:
 
 ---
 
-## 5. Existing integration support
+## 6. Existing integration support
 
 The application must not assume an empty Boomi account.
 
@@ -171,11 +424,17 @@ Existing components may be ADOPTED into a project.
 
 Adoption does not perform a Boomi write.
 
-An adopted component receives a stable project identity linked to its Boomi componentId.
+An adopted component receives a stable project identity linked to its Boomi `componentId`.
+
+Discovery MUST remain project-independent.
+
+The discovery layer reports what Boomi contains and how supported components reference one another.
+
+It MUST NOT assign project-specific business meaning to those relationships without Project Context and evidence.
 
 ---
 
-## 6. Drift detection
+## 7. Drift detection
 
 Before any write plan is applied, Boomi Builder MUST refresh the affected Actual State.
 
@@ -201,7 +460,7 @@ No silent overwrite is allowed.
 
 ---
 
-## 7. Multi-user model
+## 8. Multi-user model
 
 Boomi Builder is a multi-user application.
 
@@ -231,18 +490,18 @@ A project does not own a user's API token.
 
 ---
 
-## 8. Boomi Connection
+## 9. Boomi Connection
 
 A Boomi Connection contains non-secret configuration such as:
 
 - connection name;
-- BOOMI_ACCOUNT_ID;
-- BOOMI_USERNAME;
+- `BOOMI_ACCOUNT_ID`;
+- `BOOMI_USERNAME`;
 - status;
 - last successful connection test;
 - secret reference.
 
-BOOMI_API_TOKEN is secret material.
+`BOOMI_API_TOKEN` is secret material.
 
 The token MUST NOT be stored as plaintext in:
 
@@ -256,13 +515,13 @@ The token MUST NOT be stored as plaintext in:
 - prompts;
 - source control.
 
-The application stores only a SecretReference.
+The application stores only a `SecretReference`.
 
 The actual secret is obtained by the backend only when required for an authorized Boomi operation.
 
 ---
 
-## 9. Secret boundary
+## 10. Secret boundary
 
 AI has no access to secret values.
 
@@ -295,7 +554,7 @@ The Secret Store interface MUST remain replaceable so that a centralized deploym
 
 ---
 
-## 10. Authorization
+## 11. Authorization
 
 A user must be authorized for:
 
@@ -313,7 +572,7 @@ AI-generated plans do not imply authorization.
 
 ---
 
-## 11. AI boundary
+## 12. AI boundary
 
 AI responsibilities may include:
 
@@ -342,9 +601,15 @@ AI MUST NOT:
 - bypass approval;
 - bypass deterministic verification.
 
+AI interpretation MUST remain distinguishable from deterministic Boomi discovery and component analysis.
+
+A generic analyzer reports observable component structure.
+
+AI or project logic may interpret that structure only within the Evidence Model.
+
 ---
 
-## 12. Evidence model
+## 13. Evidence model
 
 Important conclusions must be evidence-aware.
 
@@ -370,9 +635,17 @@ Unknown information remains explicit.
 
 An unresolved required field can block Desired State approval or Build Plan execution.
 
+Evidence interpretation is project-specific.
+
+Generic discovery and component-analysis services produce observations and Platform Facts.
+
+They MUST NOT silently assign project-specific business meaning to those observations.
+
+A discovered value may therefore be authoritative as Actual State while its business meaning remains TO_CONFIRM.
+
 ---
 
-## 13. Boomi execution boundary
+## 14. Boomi execution boundary
 
 Only the Boomi Engine Adapter may invoke the embedded engine.
 
@@ -394,9 +667,13 @@ The adapter is responsible for:
 
 Secrets must not be passed as visible command-line arguments if a safer runtime mechanism is available.
 
+Read-only discovery and analysis SHOULD be separated where practical.
+
+A component may be downloaded through the authorized Boomi execution boundary and then analyzed locally without repeatedly accessing Boomi or resolving credentials.
+
 ---
 
-## 14. Write workflow
+## 15. Write workflow
 
 Every write follows:
 
@@ -413,9 +690,13 @@ REFRESH ACTUAL STATE
 
 No automatic retry is allowed after an ambiguous destructive or lifecycle response.
 
+Generic write capabilities MUST operate on approved Desired State and deterministic plans.
+
+They MUST NOT contain project-specific business assumptions embedded in execution code.
+
 ---
 
-## 15. Audit
+## 16. Audit
 
 Every meaningful operation must be auditable.
 
@@ -437,9 +718,11 @@ An execution record should identify:
 
 Secrets are never recorded.
 
+Where analysis contributes to a plan, the relevant discovered component version and evidence references should be identifiable so that the basis of the plan can be reconstructed.
+
 ---
 
-## 16. Project storage
+## 17. Project storage
 
 Boomi Builder has its own project storage.
 
@@ -451,9 +734,15 @@ The existing external ZTE workspace is not silently converted into mutable appli
 
 It will later be imported/adopted through an explicit workflow.
 
+Project storage contains Project Context and project-specific state.
+
+Generic Boomi platform logic MUST NOT depend on a particular project's directory name, component IDs, profile names or field names.
+
+Runtime data, secrets and downloaded discovery artifacts must remain separated from source-controlled application code and project definitions according to their security and lifecycle requirements.
+
 ---
 
-## 17. Initial technology direction
+## 18. Initial technology direction
 
 Frontend:
 React + TypeScript
