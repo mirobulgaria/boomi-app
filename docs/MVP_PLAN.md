@@ -14,6 +14,91 @@ rather than NEW.
 
 ---
 
+## Current execution roadmap
+
+This section is the authoritative sequencing for near-term work.
+
+The numbered Phase sections below remain capability specifications. Where their historical order conflicts with this roadmap, **this roadmap wins**.
+
+### 1. Deterministic Boomi understanding (current)
+
+- SensitiveValueRedactor
+- analyze-process
+- Connector Settings / Operation analyzers
+- Unified Component Analysis Service
+- Environment / Environment Extensions
+
+Goal: close the generic vertical slice
+
+Boomi definition → Discovery → Analyzers → Platform Facts
+
+Component analysis status: working v1; representation coverage still expanding.
+
+### 2. CHECKPOINT — engineering / productization
+
+After the understanding slice above:
+
+- Root `README.md` (points to detailed docs)
+- CI: Windows + Python 3.13 + pytest
+- Read-only FastAPI surface: connections / discovery / analysis
+
+Do not add ruff/mypy as a CI gate until the project has an agreed configuration.
+
+Do not design the final SQLite schema before Project + ADOPT + Evidence contracts stabilize.
+
+### 3. Project domain and persistence
+
+- Project domain model
+- ADOPT
+- Evidence / blocker model
+- Persistence migration to SQLite
+
+### 4. Multi-user product surface
+
+- Application identity / authentication
+- React + TypeScript shell
+- Connections UI
+- Discover / Analyze / Adopt UI
+
+### 5. Controlled change lifecycle
+
+- Desired State
+- Diff
+- Plan
+- Preview
+- Approval
+- Apply
+- Verify
+- Audit / Sync
+
+Write primitives may exist in the embedded engine. The application-level controlled write policy / authorization / approval layer is what must be built here. Capability in the engine ≠ permitted application write path.
+
+### 6. AI assistant
+
+AI may assist on safe structured context only:
+
+Platform Facts + Project Context + Evidence
+→ AI proposals / explanations / questions
+
+**Never:** AI → Boomi
+
+Place AI after Evidence / Project model is real, and before (or alongside) Plan as an assistant — not as an authority over Boomi writes.
+
+---
+
+## Analyzer expansion cut-off
+
+After **Unified Analysis + Environment / Environment Extensions**, stop expanding the analyzer layer unless a concrete real adoption case shows a missing **generic Boomi capability**.
+
+Rules:
+
+- Different fields / names / business structures in a future project → **do not** write a new analyzer; use existing generic Platform Facts + project evidence.
+- A new Boomi representation the platform does not yet understand → **then** extend a generic capability.
+
+This cut-off protects against building an excellent analyzer library with no shippable product, and stays aligned with `ARCHITECTURE.md` (platform is project-agnostic; SAP ↔ ZTE is validation, not schema).
+
+---
+
 ## Phase 0 — Baseline
 
 Status: COMPLETE
@@ -91,7 +176,7 @@ Deliverables:
 - runtime credential injection;
 - stdout/stderr capture;
 - timeout handling;
-- secret redaction;
+- reusable sensitive-value redaction at presentation / logging / AI boundaries;
 - structured result parsing;
 - read-only operations:
   - get
@@ -144,6 +229,17 @@ First target:
 
 SAP ↔ ZTE existing TEST implementation.
 
+Current implementation status:
+
+- read-only component metadata retrieval: implemented;
+- component definition download: implemented;
+- recursive dependency discovery: implemented v1;
+- XML Profile analysis: implemented v1;
+- Transform Map analysis: implemented v1;
+- Process analysis: implemented v1;
+- Connector Settings / Operation analysis: pending;
+- Environment / Environment Extensions analysis: pending.
+
 ---
 
 ## Phase 6 — Adopt / Continue
@@ -194,7 +290,7 @@ Goal:
 
 Add project-aware ChatGPT assistance.
 
-AI context may include:
+AI context may include, when available:
 
 - project metadata;
 - artifacts where authorized;
@@ -203,7 +299,7 @@ AI context may include:
 - decisions;
 - sanitized Actual State;
 - dependency graph;
-- Desired State;
+- approved or proposed Desired State;
 - Diff;
 - plans.
 
@@ -315,3 +411,4 @@ Deliverables:
 8. Every write has authoritative post-operation verification.
 9. Ambiguous destructive results are never automatically retried.
 10. Standalone boomi-cli remains independent.
+11. Project-specific names, fields and business structures never define generic platform logic.
