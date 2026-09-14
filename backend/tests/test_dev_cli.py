@@ -9,6 +9,11 @@ from boomi_builder.adapters.boomi_engine import (
     BoomiComponentResult,
 )
 from boomi_builder.dev_cli import build_parser
+from boomi_builder.services.boomi_discovery_service import (
+    DiscoveryComponent,
+    DiscoveryEdge,
+    DiscoveryResult,
+)
 from boomi_builder.settings import get_app_paths
 
 
@@ -61,6 +66,24 @@ def test_dev_cli_definition_parser() -> None:
     assert args.command == "definition"
     assert args.connection_id == "connection-1"
     assert args.component_id == "component-1"
+
+
+def test_dev_cli_discover_parser() -> None:
+    parser = build_parser()
+
+    args = parser.parse_args(
+        [
+            "discover",
+            "--connection-id",
+            "connection-1",
+            "--root-component-id",
+            "component-1",
+        ]
+    )
+
+    assert args.command == "discover"
+    assert args.connection_id == "connection-1"
+    assert args.root_component_id == "component-1"
 
 
 def test_runtime_paths_are_ready_for_dev_cli() -> None:
@@ -341,5 +364,151 @@ def test_dev_cli_definition_downloads_validated_xml_without_printing_token(
     assert str(expected_path) in captured.out
 
     assert component_xml not in captured.out
+    assert synthetic_token not in captured.out
+    assert synthetic_token not in captured.err
+
+
+def test_dev_cli_discover_uses_connection_and_does_not_print_token(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    synthetic_token = (
+        "SYNTHETIC_DISCOVERY_TOKEN_NOT_REAL"
+    )
+
+    root_id = (
+        "1548d6fa-15b7-41e0-84ca-45dd46668bed"
+    )
+
+    map_id = (
+        "d857667b-4fba-41e2-a41c-6cea75010029"
+    )
+
+    connection = SimpleNamespace(
+        id="connection-1",
+    )
+
+    class FakeRepository:
+        def get(self, connection_id):
+            assert connection_id == "connection-1"
+            return connection
+
+    class FakeConnectionService:
+        def resolve_runtime_environment(
+            self,
+            actual_connection,
+        ):
+            assert actual_connection is connection
+
+            return {
+                "BOOMI_ACCOUNT_ID": "TEST_ACCOUNT",
+                "BOOMI_USERNAME": (
+                    "test.user@example.invalid"
+                ),
+                "BOOMI_API_TOKEN": synthetic_token,
+            }
+
+    fake_paths = SimpleNamespace(
+        data_root=tmp_path,
+    )
+
+    fake_runtime = (
+        fake_paths,
+        object(),
+        FakeRepository(),
+        FakeConnectionService(),
+        object(),
+        object(),
+    )
+
+    discovery_result = DiscoveryResult(
+        root_component_id=root_id,
+        components=(
+            DiscoveryComponent(
+                component_id=root_id,
+                name="Root Process",
+                type="process",
+                version=7,
+                definition_path=(
+                    tmp_path
+                    / "discovery"
+                    / root_id
+                    / "component.xml"
+                ),
+                supported=True,
+            ),
+            DiscoveryComponent(
+                component_id=map_id,
+                name="Map",
+                type="transform.map",
+                version=7,
+                definition_path=(
+                    tmp_path
+                    / "discovery"
+                    / map_id
+                    / "component.xml"
+                ),
+                supported=True,
+            ),
+        ),
+        edges=(
+            DiscoveryEdge(
+                source_component_id=root_id,
+                target_component_id=map_id,
+                relation="process-map",
+            ),
+        ),
+    )
+
+    from boomi_builder import dev_cli
+
+    with patch(
+        "boomi_builder.dev_cli.build_runtime",
+        return_value=fake_runtime,
+    ), patch(
+        "boomi_builder.dev_cli.BoomiDiscoveryService"
+    ) as discovery_service_class:
+        discovery_service = (
+            discovery_service_class.return_value
+        )
+
+        discovery_service.discover.return_value = (
+            discovery_result
+        )
+
+        exit_code = dev_cli.discover_command(
+            connection_id="connection-1",
+            root_component_id=root_id,
+        )
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+
+    discovery_service_class.assert_called_once_with(
+        fake_runtime[-1]
+    )
+
+    discovery_service.discover.assert_called_once_with(
+        workspace=tmp_path,
+        discovery_root=tmp_path / "discovery",
+        root_component_id=root_id,
+        environment={
+            "BOOMI_ACCOUNT_ID": "TEST_ACCOUNT",
+            "BOOMI_USERNAME": (
+                "test.user@example.invalid"
+            ),
+            "BOOMI_API_TOKEN": synthetic_token,
+        },
+    )
+
+    assert "Boomi discovery completed." in captured.out
+    assert "Components     : 2" in captured.out
+    assert "References     : 1" in captured.out
+    assert "Unsupported    : 0" in captured.out
+
+    assert root_id in captured.out
+    assert map_id in captured.out
+
     assert synthetic_token not in captured.out
     assert synthetic_token not in captured.err

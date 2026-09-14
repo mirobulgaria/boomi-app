@@ -18,6 +18,9 @@ from boomi_builder.services.boomi_connection_lifecycle import (
 from boomi_builder.services.boomi_connection_service import (
     BoomiConnectionService,
 )
+from boomi_builder.services.boomi_discovery_service import (
+    BoomiDiscoveryService,
+)
 from boomi_builder.services.connection_enrollment import (
     ConnectionEnrollment,
 )
@@ -197,6 +200,99 @@ def definition_command(
     return 0
 
 
+def discover_command(
+    *,
+    connection_id: str,
+    root_component_id: str,
+) -> int:
+    (
+        paths,
+        _secret_store,
+        repository,
+        connection_service,
+        _lifecycle_service,
+        engine,
+    ) = build_runtime()
+
+    connection = repository.get(
+        connection_id
+    )
+
+    environment = (
+        connection_service.resolve_runtime_environment(
+            connection
+        )
+    )
+
+    discovery_root = (
+        paths.data_root
+        / "discovery"
+    )
+
+    discovery_service = BoomiDiscoveryService(
+        engine
+    )
+
+    result = discovery_service.discover(
+        workspace=paths.data_root,
+        discovery_root=discovery_root,
+        root_component_id=root_component_id,
+        environment=environment,
+    )
+
+    print()
+    print("Boomi discovery completed.")
+    print("==========================")
+    print(
+        f"Root component : "
+        f"{result.root_component_id}"
+    )
+    print(
+        f"Components     : "
+        f"{len(result.components)}"
+    )
+    print(
+        f"References     : "
+        f"{len(result.edges)}"
+    )
+    print(
+        f"Unsupported    : "
+        f"{len(result.unsupported_components)}"
+    )
+
+    print()
+    print("Components")
+    print("----------")
+
+    for component in result.components:
+        status = (
+            "supported"
+            if component.supported
+            else "unsupported"
+        )
+
+        print(
+            f"{component.type} | "
+            f"{component.component_id} | "
+            f"{component.name} | "
+            f"v{component.version} | "
+            f"{status}"
+        )
+
+    print()
+    print("References")
+    print("----------")
+
+    for edge in result.edges:
+        print(
+            f"{edge.relation} | "
+            f"{edge.source_component_id} -> "
+            f"{edge.target_component_id}"
+        )
+
+    return 0
+
+
 def _write_utf8_text(
     path: Path,
     content: str,
@@ -258,6 +354,21 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
     )
 
+    discover_parser = subparsers.add_parser(
+        "discover",
+        help="Discover a Boomi component dependency graph.",
+    )
+
+    discover_parser.add_argument(
+        "--connection-id",
+        required=True,
+    )
+
+    discover_parser.add_argument(
+        "--root-component-id",
+        required=True,
+    )
+
     return parser
 
 
@@ -280,6 +391,12 @@ def main() -> int:
         return definition_command(
             connection_id=args.connection_id,
             component_id=args.component_id,
+        )
+
+    if args.command == "discover":
+        return discover_command(
+            connection_id=args.connection_id,
+            root_component_id=args.root_component_id,
         )
 
     parser.error(
