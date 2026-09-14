@@ -21,6 +21,9 @@ from boomi_builder.services.boomi_connection_service import (
 from boomi_builder.services.boomi_discovery_service import (
     BoomiDiscoveryService,
 )
+from boomi_builder.services.boomi_xml_profile_analyzer import (
+    BoomiXmlProfileAnalyzer,
+)
 from boomi_builder.services.connection_enrollment import (
     ConnectionEnrollment,
 )
@@ -293,6 +296,86 @@ def discover_command(
     return 0
 
 
+def analyze_profile_command(
+    *,
+    component_id: str,
+) -> int:
+    paths = get_app_paths()
+
+    component_path = (
+        paths.data_root
+        / "discovery"
+        / component_id
+        / "component.xml"
+    )
+
+    if not component_path.is_file():
+        raise FileNotFoundError(
+            "Local component definition was not found: "
+            f"{component_path}"
+        )
+
+    xml_text = component_path.read_text(
+        encoding="utf-8",
+    )
+
+    analysis = BoomiXmlProfileAnalyzer().analyze(
+        xml_text
+    )
+
+    print()
+    print("Boomi XML profile analysis")
+    print("==========================")
+    print(f"Component ID       : {component_id}")
+    print(f"File               : {component_path}")
+    print(f"Model version      : {analysis.model_version}")
+    print(f"Strict             : {analysis.strict}")
+    print(f"Logical elements   : {analysis.element_count}")
+    print(f"XML attributes     : {analysis.attribute_count}")
+    print(
+        f"Repeating elements : "
+        f"{len(analysis.repeating_elements)}"
+    )
+
+    print()
+    print("Root paths")
+    print("----------")
+
+    for root_path in analysis.root_paths:
+        print(root_path)
+
+    print()
+    print("Repeating elements")
+    print("------------------")
+
+    for element in analysis.repeating_elements:
+        print(
+            f"{element.path} | "
+            f"{_format_occurs(element.min_occurs, element.max_occurs)}"
+        )
+
+    return 0
+
+
+def _format_occurs(
+    min_occurs: int | None,
+    max_occurs: int | None,
+) -> str:
+    minimum = (
+        "?"
+        if min_occurs is None
+        else str(min_occurs)
+    )
+
+    maximum = (
+        "?"
+        if max_occurs is None
+        else str(max_occurs)
+    )
+
+    return f"{minimum}..{maximum}"
+
+
 def _write_utf8_text(
     path: Path,
     content: str,
@@ -369,6 +452,16 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
     )
 
+    analyze_profile_parser = subparsers.add_parser(
+        "analyze-profile",
+        help="Analyze a local discovered Boomi XML profile.",
+    )
+
+    analyze_profile_parser.add_argument(
+        "--component-id",
+        required=True,
+    )
+
     return parser
 
 
@@ -397,6 +490,11 @@ def main() -> int:
         return discover_command(
             connection_id=args.connection_id,
             root_component_id=args.root_component_id,
+        )
+
+    if args.command == "analyze-profile":
+        return analyze_profile_command(
+            component_id=args.component_id,
         )
 
     parser.error(
