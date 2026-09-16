@@ -9,6 +9,7 @@ param(
         "list-environments",
         "get-environment-extensions",
         "capability-inventory",
+        "process-definition-corpus",
         "create-preview",
         "create",
         "create-empty-process",
@@ -180,7 +181,8 @@ if ($RuntimeMode -eq "app-readonly") {
     "get-definition",
     "list-environments",
     "get-environment-extensions",
-    "capability-inventory"
+    "capability-inventory",
+    "process-definition-corpus"
     )
 
     if ($Command -notin $AppReadOnlyCommands) {
@@ -294,6 +296,11 @@ switch ($Command) {
     "capability-inventory" {
 
         Invoke-BoomiCapabilityInventoryProbe
+    }
+
+    "process-definition-corpus" {
+
+        Invoke-BoomiProcessDefinitionCorpusProbe
     }
 
     "export" {

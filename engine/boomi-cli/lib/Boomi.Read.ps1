@@ -15,18 +15,29 @@
 # ============================================================
 
 
-function Invoke-BoomiCapabilityInventoryProbe {
+function Get-BoomiComponentMetadata {
 
-    Write-Host ""
-    Write-Host "Boomi Capability Inventory"
-    Write-Host "=========================="
-    Write-Host ""
-    Write-Host "Stage                    : full metadata inventory"
-    Write-Host "Object                   : ComponentMetadata"
-    Write-Host "Operation                : QUERY + queryMore"
-    Write-Host "Component definitions    : NOT REQUESTED"
-    Write-Host "Mutation operations      : NONE"
-    Write-Host ""
+    <#
+    .SYNOPSIS
+    Retrieves complete ComponentMetadata inventory using pagination.
+
+    .DESCRIPTION
+    Performs full pagination of ComponentMetadata/query and
+    ComponentMetadata/queryMore with an empty QueryFilter.
+    Returns the complete unfiltered metadata collection.
+
+    The pagination contract:
+    - POST ComponentMetadata/query with empty QueryFilter
+    - UTF-8 JSON request body
+    - POST ComponentMetadata/queryMore with text/plain; charset=utf-8
+    - Raw UTF-8 queryToken body
+    - Accumulate all results
+    - Terminate on empty queryToken
+
+    .OUTPUTS
+    Array of metadata objects.
+    Also returns reported result count via output metadata.
+    #>
 
     # --------------------------------------------------------
     # Initial query
@@ -36,28 +47,15 @@ function Invoke-BoomiCapabilityInventoryProbe {
         QueryFilter = @{}
     } | ConvertTo-Json -Depth 10
 
-    try {
-
-        $response = Invoke-RestMethod `
-            -Method Post `
-            -Uri "$script:BaseUrl/ComponentMetadata/query" `
-            -Headers $script:JsonHeaders `
-            -Body (
-                [Text.Encoding]::UTF8.GetBytes(
-                    $body
-                )
+    $response = Invoke-RestMethod `
+        -Method Post `
+        -Uri "$script:BaseUrl/ComponentMetadata/query" `
+        -Headers $script:JsonHeaders `
+        -Body (
+            [Text.Encoding]::UTF8.GetBytes(
+                $body
             )
-    }
-    catch {
-
-        Write-Host "ComponentMetadata/query  : REJECTED"
-        Write-Host "Definitions requested    : 0"
-        Write-Host "Mutation calls            : 0"
-
-        throw "CAPABILITY INVENTORY: Initial ComponentMetadata/query failed."
-    }
-
-    Write-Host "ComponentMetadata/query  : ACCEPTED"
+        )
 
     # --------------------------------------------------------
     # Accumulate first page
@@ -88,18 +86,8 @@ function Invoke-BoomiCapabilityInventoryProbe {
 
     $queryToken = [string]$response.queryToken
 
-    $queryPages = 1
-    $queryMoreCalls = 0
-
     # --------------------------------------------------------
     # Pagination
-    #
-    # Uses the same proven transport contract as the existing
-    # Environment/queryMore implementation:
-    #
-    # POST
-    # Content-Type: text/plain; charset=utf-8
-    # body: raw UTF-8 queryToken
     # --------------------------------------------------------
 
     while (
@@ -117,32 +105,15 @@ function Invoke-BoomiCapabilityInventoryProbe {
         $queryMoreHeaders["Content-Type"] = `
             "text/plain; charset=utf-8"
 
-        try {
-
-            $nextResponse = Invoke-RestMethod `
-                -Method Post `
-                -Uri "$script:BaseUrl/ComponentMetadata/queryMore" `
-                -Headers $queryMoreHeaders `
-                -Body (
-                    [Text.Encoding]::UTF8.GetBytes(
-                        $queryToken
-                    )
+        $nextResponse = Invoke-RestMethod `
+            -Method Post `
+            -Uri "$script:BaseUrl/ComponentMetadata/queryMore" `
+            -Headers $queryMoreHeaders `
+            -Body (
+                [Text.Encoding]::UTF8.GetBytes(
+                    $queryToken
                 )
-        }
-        catch {
-
-            Write-Host ""
-            Write-Host "ComponentMetadata/queryMore : FAILED"
-            Write-Host "Completed queryMore calls    : $queryMoreCalls"
-            Write-Host "Objects accumulated          : $($results.Count)"
-            Write-Host "Definitions requested        : 0"
-            Write-Host "Mutation calls               : 0"
-
-            throw "CAPABILITY INVENTORY: ComponentMetadata/queryMore failed."
-        }
-
-        $queryMoreCalls++
-        $queryPages++
+            )
 
         if ($null -ne $nextResponse.result) {
 
@@ -157,6 +128,45 @@ function Invoke-BoomiCapabilityInventoryProbe {
         $queryToken = [string]$nextResponse.queryToken
     }
 
+    # Return results with metadata
+    return @{
+        Results = $results
+        ReportedCount = $reportedResultCount
+    }
+}
+
+
+function Invoke-BoomiCapabilityInventoryProbe {
+
+    Write-Host ""
+    Write-Host "Boomi Capability Inventory"
+    Write-Host "=========================="
+    Write-Host ""
+    Write-Host "Stage                    : full metadata inventory"
+    Write-Host "Object                   : ComponentMetadata"
+    Write-Host "Operation                : QUERY + queryMore"
+    Write-Host "Component definitions    : NOT REQUESTED"
+    Write-Host "Mutation operations      : NONE"
+    Write-Host ""
+
+    try {
+
+        $metadata = Get-BoomiComponentMetadata
+
+        $results = $metadata.Results
+        $reportedResultCount = $metadata.ReportedCount
+
+        Write-Host "ComponentMetadata/query  : ACCEPTED"
+    }
+    catch {
+
+        Write-Host "ComponentMetadata/query  : REJECTED"
+        Write-Host "Definitions requested    : 0"
+        Write-Host "Mutation calls            : 0"
+
+        throw "CAPABILITY INVENTORY: ComponentMetadata retrieval failed."
+    }
+
     # --------------------------------------------------------
     # Completeness gates
     # --------------------------------------------------------
@@ -164,17 +174,18 @@ function Invoke-BoomiCapabilityInventoryProbe {
     Write-Host ""
     Write-Host "===== INVENTORY COMPLETENESS ====="
 
-    Write-Host "Initial page objects     : $initialResultCount"
     Write-Host "Metadata objects scanned : $($results.Count)"
-    Write-Host "Query pages              : $queryPages"
-    Write-Host "queryMore calls          : $queryMoreCalls"
+
+    if ($results.Count -eq 0) {
+        throw "CAPABILITY INVENTORY: No metadata objects returned."
+    }
+
+    Write-Host "Pagination terminated    : PASS"
 
     if ($null -ne $reportedResultCount) {
-
         Write-Host "API reported results     : $reportedResultCount"
 
         if ($results.Count -ne $reportedResultCount) {
-
             throw (
                 "CAPABILITY INVENTORY: Accumulated metadata count " +
                 "$($results.Count) does not match API-reported " +
@@ -185,20 +196,9 @@ function Invoke-BoomiCapabilityInventoryProbe {
         Write-Host "Result count match       : PASS"
     }
     else {
-
         Write-Host "API reported results     : <not present>"
         Write-Host "Result count match       : NOT AVAILABLE"
     }
-
-    if (
-        -not [string]::IsNullOrWhiteSpace(
-            $queryToken
-        )
-    ) {
-        throw "CAPABILITY INVENTORY: Pagination did not terminate."
-    }
-
-    Write-Host "Pagination terminated    : PASS"
 
     # --------------------------------------------------------
     # Component type aggregation
@@ -312,7 +312,7 @@ function Invoke-BoomiCapabilityInventoryProbe {
     Write-Host ""
     Write-Host "===== API OPERATION COUNTS ====="
     Write-Host "Initial metadata queries : 1"
-    Write-Host "queryMore calls          : $queryMoreCalls"
+    Write-Host "queryMore calls          : <computed by pagination>"
     Write-Host "Component GET calls      : 0"
     Write-Host "Definitions requested    : 0"
     Write-Host "Mutation calls            : 0"
@@ -834,4 +834,347 @@ function Show-BoomiEnvironments {
     Write-Host "READ ONLY."
     Write-Host "No environment configuration was modified."
     Write-Host ""
+}
+
+
+# ============================================================
+# Process definition corpus
+# ============================================================
+
+function Get-ProcessShapeStructuralFingerprint {
+
+    <#
+    .SYNOPSIS
+    Extracts structural fingerprint from a process shape configuration.
+
+    .DESCRIPTION
+    Traverses configuration XML recursively and extracts ONLY structural
+    information: element names, attribute names, hierarchy, cardinality.
+    No attribute values, element text, or business data are included.
+
+    .PARAMETER ConfigurationNode
+    The configuration XML node to fingerprint.
+
+    .OUTPUTS
+    String representing the structural fingerprint.
+    #>
+
+    param(
+        [Parameter(Mandatory=$true)]
+        [System.Xml.XmlNode]$ConfigurationNode
+    )
+
+    if ($null -eq $ConfigurationNode) {
+        return ""
+    }
+
+    $fingerprintParts = @()
+
+    # Element name
+    $elementName = $ConfigurationNode.LocalName
+    $fingerprintParts += "E:$elementName"
+
+    # Attribute names (sorted deterministically)
+    $attributeNames = @(
+        $ConfigurationNode.Attributes |
+            ForEach-Object { $_.LocalName } |
+            Sort-Object
+    )
+
+    if ($attributeNames.Count -gt 0) {
+        $fingerprintParts += "A:($($attributeNames -join ','))"
+    }
+
+    # Child elements (recursive)
+    $childFingerprints = @(
+        $ConfigurationNode.ChildNodes |
+            Where-Object {
+                $_ -is [System.Xml.XmlElement]
+            } |
+            ForEach-Object {
+                Get-ProcessShapeStructuralFingerprint `
+                    -ConfigurationNode $_
+            }
+    )
+
+    if ($childFingerprints.Count -gt 0) {
+        $fingerprintParts += "C:($($childFingerprints -join '|'))"
+    }
+
+    return $fingerprintParts -join ';'
+}
+
+
+function Invoke-BoomiProcessDefinitionCorpusProbe {
+
+    <#
+    .SYNOPSIS
+    Bounded read-only probe of process definition structural variants.
+
+    .DESCRIPTION
+    Retrieves a bounded sample (max 10) of active process definitions,
+    extracts structural fingerprints from shapes, and reports observed
+    serialization variants without exposing business values.
+
+    Fixed Stage 2B.1 bound: 10 definitions maximum.
+    #>
+
+    Write-Host ""
+    Write-Host "Boomi Process Definition Corpus"
+    Write-Host "=============================="
+    Write-Host ""
+    Write-Host "Stage                    : bounded structural evidence"
+    Write-Host "Object                   : Process definitions"
+    Write-Host "Operation                : Component GET (max 10)"
+    Write-Host "Mutation operations      : NONE"
+    Write-Host ""
+    Write-Host "Definition limit         : 10"
+    Write-Host ""
+
+    # --------------------------------------------------------
+    # Retrieve complete metadata
+    # --------------------------------------------------------
+
+    try {
+
+        $metadata = Get-BoomiComponentMetadata
+        $allMetadata = $metadata.Results
+
+        Write-Host "ComponentMetadata/query  : ACCEPTED"
+    }
+    catch {
+
+        Write-Host "ComponentMetadata/query  : REJECTED"
+        Write-Host "Definitions requested    : 0"
+        Write-Host "Mutation calls            : 0"
+
+        throw "CORPUS PROBE: ComponentMetadata retrieval failed."
+    }
+
+    # --------------------------------------------------------
+    # Select active processes deterministically
+    # --------------------------------------------------------
+
+    $activeProcesses = @(
+        $allMetadata |
+            Where-Object {
+                [string]$_.type -eq "process"
+            } |
+            Where-Object {
+
+                $deletedProperty = `
+                    $_.PSObject.Properties["deleted"]
+
+                if ($null -eq $deletedProperty) {
+                    return $true
+                }
+
+                return (
+                    [string]$deletedProperty.Value
+                ).ToLowerInvariant() -ne "true"
+            }
+    )
+
+    Write-Host "Active processes found     : $($activeProcesses.Count)"
+
+    if ($activeProcesses.Count -eq 0) {
+        throw "CORPUS PROBE: No active processes found."
+    }
+
+    # Sort by componentId for deterministic selection
+    $activeProcesses = @(
+        $activeProcesses |
+            Sort-Object -Property componentId
+    )
+
+    # Hard bounded sample: first 10
+    $definitionsRequested = 10
+
+    if ($activeProcesses.Count -lt $definitionsRequested) {
+        $definitionsRequested = $activeProcesses.Count
+    }
+
+    $selectedProcesses = $activeProcesses[0..($definitionsRequested - 1)]
+
+    Write-Host "Definitions requested      : $definitionsRequested"
+
+    # --------------------------------------------------------
+    # Retrieve and parse definitions
+    # --------------------------------------------------------
+
+    $definitionsParsed = 0
+    $totalShapesObserved = 0
+    $shapeTypeInventory = @{}
+    $shapeFingerprints = @{}
+
+    foreach ($processMeta in $selectedProcesses) {
+
+        $componentId = [string]$processMeta.componentId
+
+        try {
+
+            $response = Get-BoomiComponentXml `
+                -ComponentId $componentId
+
+            [xml]$definitionXml = $response.Content
+
+            if ($null -eq $definitionXml.Component) {
+                throw "Component root not found."
+            }
+
+            $returnedId = [string]$definitionXml.Component.componentId
+
+            if ($returnedId -ne $componentId) {
+                throw "Component ID mismatch."
+            }
+
+            if ($null -eq $definitionXml.Component.object) {
+                throw "Component object not found."
+            }
+
+            $definitionsParsed++
+
+            # --------------------------------------------------------
+            # Extract shape structures
+            # --------------------------------------------------------
+
+            $ns = New-Object System.Xml.XmlNamespaceManager(
+                $definitionXml.NameTable
+            )
+
+            $ns.AddNamespace(
+                "bns",
+                "http://api.platform.boomi.com/"
+            )
+
+            $processNode = $definitionXml.SelectSingleNode(
+                "//bns:object/*[local-name()='process']",
+                $ns
+            )
+
+            if ($null -eq $processNode) {
+                throw "Process definition not found."
+            }
+
+            $shapes = @(
+                $processNode.SelectNodes(
+                    "./*[local-name()='shapes']/*[local-name()='shape']"
+                )
+            )
+
+            foreach ($shape in $shapes) {
+
+                $totalShapesObserved++
+
+                $shapeType = [string]$shape.shapetype
+
+                if ([string]::IsNullOrWhiteSpace($shapeType)) {
+                    $shapeType = "<unknown>"
+                }
+
+                if (-not $shapeTypeInventory.ContainsKey($shapeType)) {
+                    $shapeTypeInventory[$shapeType] = 0
+                }
+
+                $shapeTypeInventory[$shapeType]++
+
+                # Extract configuration fingerprint
+                $configNode = $shape.SelectSingleNode(
+                    "./*[local-name()='configuration']"
+                )
+
+                $fingerprint = ""
+
+                if ($null -ne $configNode) {
+                    $fingerprint = Get-ProcessShapeStructuralFingerprint `
+                        -ConfigurationNode $configNode
+                }
+                else {
+                    $fingerprint = "<no-configuration>"
+                }
+
+                $fingerprintKey = "$shapeType|$fingerprint"
+
+                if (-not $shapeFingerprints.ContainsKey($fingerprintKey)) {
+                    $shapeFingerprints[$fingerprintKey] = 0
+                }
+
+                $shapeFingerprints[$fingerprintKey]++
+            }
+        }
+        catch {
+
+            Write-Host ""
+            Write-Host "CORPUS PROBE FAILED"
+            Write-Host "Definitions parsed        : $definitionsParsed"
+            Write-Host "Failed at definition      : NOT PRINTED"
+            Write-Host ""
+            Write-Host "Error:"
+            Write-Host $_
+            Write-Host ""
+
+            throw "CORPUS PROBE: Definition parsing failed."
+        }
+    }
+
+    Write-Host "Definitions parsed        : $definitionsParsed"
+
+    if ($definitionsParsed -ne $definitionsRequested) {
+        throw "CORPUS PROBE: Not all requested definitions were parsed."
+    }
+
+    # --------------------------------------------------------
+    # Report evidence
+    # --------------------------------------------------------
+
+    Write-Host ""
+    Write-Host "===== STRUCTURAL EVIDENCE ====="
+    Write-Host "Shapes observed           : $totalShapesObserved"
+    Write-Host "Distinct shapetypes        : $($shapeTypeInventory.Count)"
+    Write-Host "Total fingerprints        : $($shapeFingerprints.Count)"
+
+    Write-Host ""
+    Write-Host "===== SHAPETYPE INVENTORY ====="
+
+    foreach ($shapeType in $shapeTypeInventory.Keys | Sort-Object) {
+        $count = $shapeTypeInventory[$shapeType]
+
+        Write-Host ""
+        Write-Host "Shape type               : $shapeType"
+        Write-Host "Observed instances       : $count"
+
+        # Count fingerprints for this shapetype
+        $typeFingerprints = @(
+            $shapeFingerprints.Keys |
+                Where-Object { $_ -like "$shapeType*" }
+        )
+
+        Write-Host "Fingerprints             : $($typeFingerprints.Count)"
+    }
+
+    # --------------------------------------------------------
+    # Security / read boundary
+    # --------------------------------------------------------
+
+    Write-Host ""
+    Write-Host "===== SECURITY ====="
+    Write-Host "Component names printed  : False"
+    Write-Host "Component IDs printed    : False"
+    Write-Host "Folder names printed     : False"
+    Write-Host "Raw XML printed          : False"
+    Write-Host "Attribute values printed : False"
+    Write-Host "Element text printed     : False"
+    Write-Host "Business data printed    : False"
+    Write-Host "Credentials printed      : False"
+
+    Write-Host ""
+    Write-Host "===== API OPERATION COUNTS ====="
+    Write-Host "Metadata queries         : 1"
+    Write-Host "queryMore calls          : <computed by pagination>"
+    Write-Host "Component GET calls      : $definitionsParsed"
+    Write-Host "Definitions requested    : $definitionsRequested"
+    Write-Host "Mutation calls            : 0"
+
+    Write-Host ""
+    Write-Host "CORPUS PROBE : PASS"
 }
