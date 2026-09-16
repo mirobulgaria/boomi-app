@@ -469,6 +469,133 @@ class BoomiEngineAdapter:
             xml=xml_text,
         )
 
+    def get_process_definition_corpus(
+        self,
+        *,
+        workspace: Path,
+        environment: Mapping[str, str],
+    ) -> list[str]:
+        resolved_workspace = self._validate_workspace(
+            workspace
+        )
+
+        corpus_script_path = (
+            self.paths.engine_root
+            / "get-process-definition-corpus.ps1"
+        )
+
+        result = self.runner.run_script(
+            corpus_script_path,
+            arguments=[
+                "-Workspace",
+                str(resolved_workspace),
+                "-RuntimeMode",
+                "app-readonly",
+            ],
+            environment=environment,
+        )
+
+        self._validate_process_result(
+            result,
+            operation="get-process-definition-corpus",
+        )
+
+        return self._validate_corpus_envelope(
+            result.stdout
+        )
+
+    @staticmethod
+    def _validate_corpus_envelope(
+        stdout: str,
+    ) -> list[str]:
+        try:
+            envelope = json.loads(
+                stdout
+            )
+        except json.JSONDecodeError as exc:
+            raise BoomiEngineContractError(
+                "Embedded Boomi CLI returned an invalid "
+                "corpus envelope."
+            ) from exc
+
+        if not isinstance(envelope, dict):
+            raise BoomiEngineContractError(
+                "Embedded Boomi CLI corpus envelope "
+                "root must be an object."
+            )
+
+        if set(envelope.keys()) != {
+            "version",
+            "definitions",
+        }:
+            raise BoomiEngineContractError(
+                "Embedded Boomi CLI corpus envelope "
+                "must contain only 'version' and "
+                "'definitions'."
+            )
+
+        version = envelope["version"]
+
+        if type(version) is not int or version != 1:
+            raise BoomiEngineContractError(
+                "Embedded Boomi CLI corpus envelope "
+                "version must be integer 1."
+            )
+
+        definitions = envelope["definitions"]
+
+        if not isinstance(definitions, list):
+            raise BoomiEngineContractError(
+                "Embedded Boomi CLI corpus envelope "
+                "'definitions' must be an array."
+            )
+
+        if len(definitions) == 0:
+            raise BoomiEngineContractError(
+                "Embedded Boomi CLI corpus envelope "
+                "contained no definitions."
+            )
+
+        if len(definitions) > 10:
+            raise BoomiEngineContractError(
+                "Embedded Boomi CLI corpus envelope "
+                "exceeded the maximum of 10 definitions."
+            )
+
+        for index, definition in enumerate(definitions):
+
+            if not isinstance(definition, str):
+                raise BoomiEngineContractError(
+                    "Embedded Boomi CLI corpus envelope "
+                    "definition entries must be strings."
+                )
+
+            if not definition.strip():
+                raise BoomiEngineContractError(
+                    "Embedded Boomi CLI corpus envelope "
+                    "definition entries must not be empty."
+                )
+
+            try:
+                root = ET.fromstring(definition)
+            except ET.ParseError as exc:
+                raise BoomiEngineContractError(
+                    "Embedded Boomi CLI corpus envelope "
+                    "contained a definition that is not "
+                    "valid XML."
+                ) from exc
+
+            if (
+                BoomiEngineAdapter._local_name(root.tag)
+                != "Component"
+            ):
+                raise BoomiEngineContractError(
+                    "Embedded Boomi CLI corpus envelope "
+                    "definition root must be Component."
+                )
+
+        return definitions
+
     @staticmethod
     def _validate_workspace(
         workspace: Path,
