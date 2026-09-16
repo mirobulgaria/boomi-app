@@ -175,8 +175,10 @@ if (-not (Test-Path -LiteralPath $LibRoot -PathType Container)) {
 if ($RuntimeMode -eq "app-readonly") {
 
     $AppReadOnlyCommands = @(
-        "get",
-        "get-definition"
+    "get",
+    "get-definition",
+    "list-environments",
+    "get-environment-extensions"
     )
 
     if ($Command -notin $AppReadOnlyCommands) {
