@@ -21,6 +21,10 @@ from boomi_builder.services.boomi_connection_service import (
 from boomi_builder.services.boomi_discovery_service import (
     BoomiDiscoveryService,
 )
+from boomi_builder.services.boomi_process_analyzer import (
+    BoomiProcessAnalyzer,
+    ProcessConfigurationElement,
+)
 from boomi_builder.services.boomi_transform_map_analyzer import (
     BoomiTransformMapAnalyzer,
 )
@@ -29,6 +33,9 @@ from boomi_builder.services.boomi_xml_profile_analyzer import (
 )
 from boomi_builder.services.connection_enrollment import (
     ConnectionEnrollment,
+)
+from boomi_builder.services.sensitive_value_redactor import (
+    SensitiveValueRedactor,
 )
 from boomi_builder.settings import get_app_paths
 
@@ -439,6 +446,123 @@ def analyze_map_command(
     return 0
 
 
+def analyze_process_command(
+    *,
+    component_id: str,
+) -> int:
+    component_path = _local_component_path(
+        component_id
+    )
+
+    xml_text = component_path.read_text(
+        encoding="utf-8",
+    )
+
+    analysis = BoomiProcessAnalyzer().analyze(
+        xml_text
+    )
+
+    redactor = SensitiveValueRedactor()
+
+    print()
+    print("Boomi process analysis")
+    print("======================")
+    print(f"Component ID         : {component_id}")
+    print(f"File                 : {component_path}")
+    print(f"Shape count          : {analysis.shape_count}")
+    print(
+        f"Transition count     : "
+        f"{analysis.transition_count}"
+    )
+    print(
+        f"Component references : "
+        f"{len(analysis.referenced_components)}"
+    )
+    print(
+        f"Unique component IDs : "
+        f"{len(analysis.referenced_component_ids)}"
+    )
+
+    print()
+    print("Process settings")
+    print("----------------")
+
+    for name, value in analysis.settings:
+        print(
+            f"{name} = "
+            f"{redactor.redact(name, value)}"
+        )
+
+    print()
+    print("Shapes")
+    print("------")
+
+    for shape in analysis.shapes:
+        print()
+        print(f"Name                : {shape.name}")
+        print(f"Type                : {shape.shape_type}")
+        print(
+            f"User label          : "
+            f"{_display_optional(shape.user_label)}"
+        )
+        print(
+            f"Image               : "
+            f"{_display_optional(shape.image)}"
+        )
+        print(
+            f"X                   : "
+            f"{_display_optional(shape.x)}"
+        )
+        print(
+            f"Y                   : "
+            f"{_display_optional(shape.y)}"
+        )
+        print(
+            f"Configuration roots : "
+            f"{', '.join(shape.configuration_root_names)}"
+        )
+        print(
+            f"Reference count     : "
+            f"{len(shape.references)}"
+        )
+
+        if shape.configuration:
+            print("Configuration:")
+
+            for element in shape.configuration:
+                _print_process_configuration_element(
+                    element,
+                    redactor=redactor,
+                    indent=1,
+                )
+
+    print()
+    print("Transitions")
+    print("-----------")
+
+    for transition in analysis.transitions:
+        print(
+            f"{transition.source_shape} -> "
+            f"{transition.target_shape} | "
+            f"dragpoint="
+            f"{_display_optional(transition.dragpoint_name)}"
+        )
+
+    print()
+    print("Component references")
+    print("--------------------")
+
+    for reference in analysis.referenced_components:
+        print(
+            f"{reference.shape_name} | "
+            f"{reference.element_name} | "
+            f"{reference.attribute_name} | "
+            f"{reference.component_id}"
+        )
+
+    return 0
+
+
 def _local_component_path(
     component_id: str,
 ) -> Path:
@@ -470,6 +594,48 @@ def _print_map_section(
         f"descendants="
         f"{section.descendant_element_count}"
     )
+
+
+def _print_process_configuration_element(
+    element: ProcessConfigurationElement,
+    *,
+    redactor: SensitiveValueRedactor,
+    indent: int,
+) -> None:
+    prefix = "  " * indent
+
+    print(
+        f"{prefix}{element.name}"
+    )
+
+    for name, value in element.attributes:
+        safe_value = redactor.redact(
+            name,
+            value,
+        )
+
+        print(
+            f"{prefix}  @{name} = "
+            f"{safe_value}"
+        )
+
+    if element.text is not None:
+        safe_text = redactor.redact(
+            element.name,
+            element.text,
+        )
+
+        print(
+            f"{prefix}  #text = "
+            f"{safe_text}"
+        )
+
+    for child in element.children:
+        _print_process_configuration_element(
+            child,
+            redactor=redactor,
+            indent=indent + 1,
+        )
 
 
 def _display_optional(
@@ -596,6 +762,16 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
     )
 
+    analyze_process_parser = subparsers.add_parser(
+        "analyze-process",
+        help="Analyze a local discovered Boomi process.",
+    )
+
+    analyze_process_parser.add_argument(
+        "--component-id",
+        required=True,
+    )
+
     return parser
 
 
@@ -633,6 +809,11 @@ def main() -> int:
 
     if args.command == "analyze-map":
         return analyze_map_command(
+            component_id=args.component_id,
+        )
+
+    if args.command == "analyze-process":
+        return analyze_process_command(
             component_id=args.component_id,
         )
 
