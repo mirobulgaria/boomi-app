@@ -18,6 +18,10 @@ from boomi_builder.services.boomi_connection_lifecycle import (
 from boomi_builder.services.boomi_connection_service import (
     BoomiConnectionService,
 )
+from boomi_builder.services.boomi_connector_component_analyzer import (
+    BoomiConnectorComponentAnalyzer,
+    ConnectorConfigurationElement,
+)
 from boomi_builder.services.boomi_discovery_service import (
     BoomiDiscoveryService,
 )
@@ -563,6 +567,136 @@ def analyze_process_command(
     return 0
 
 
+def analyze_connector_command(
+    *,
+    component_id: str,
+) -> int:
+    component_path = _local_component_path(
+        component_id
+    )
+
+    xml_text = component_path.read_text(
+        encoding="utf-8",
+    )
+
+    analysis = (
+        BoomiConnectorComponentAnalyzer()
+        .analyze(xml_text)
+    )
+
+    redactor = SensitiveValueRedactor()
+
+    print()
+    print("Boomi connector component analysis")
+    print("==================================")
+    print(
+        f"Component ID        : "
+        f"{component_id}"
+    )
+    print(
+        f"File                : "
+        f"{component_path}"
+    )
+    print(
+        f"Component type      : "
+        f"{analysis.component_type}"
+    )
+    print(
+        f"Configuration root  : "
+        f"{analysis.root_name}"
+    )
+    print(
+        f"Field count         : "
+        f"{analysis.field_count}"
+    )
+    print(
+        f"Component references: "
+        f"{len(analysis.references)}"
+    )
+    print(
+        f"Unique component IDs: "
+        f"{len(analysis.referenced_component_ids)}"
+    )
+
+    print()
+    print("Root attributes")
+    print("---------------")
+
+    if not analysis.root_attributes:
+        print("<none>")
+    else:
+        for name, value in analysis.root_attributes:
+            print(
+                f"{name} = "
+                f"{redactor.redact(name, value)}"
+            )
+
+    print()
+    print("Fields")
+    print("------")
+
+    if not analysis.fields:
+        print("<none>")
+    else:
+        for field in analysis.fields:
+            safe_value = redactor.redact(
+                field.id,
+                (
+                    ""
+                    if field.value is None
+                    else field.value
+                ),
+            )
+
+            display_value = (
+                "<none>"
+                if (
+                    field.value is None
+                    and not redactor.is_sensitive_name(
+                        field.id
+                    )
+                )
+                else safe_value
+            )
+
+            print(
+                f"{field.id} | "
+                f"type="
+                f"{_display_optional(field.type)} | "
+                f"value={display_value} | "
+                f"path={field.path} | "
+                f"nested="
+                f"{len(field.configuration)}"
+            )
+
+    print()
+    print("Configuration")
+    print("-------------")
+
+    _print_connector_configuration_element(
+        analysis.configuration,
+        redactor=redactor,
+        indent=0,
+    )
+
+    print()
+    print("Component references")
+    print("--------------------")
+
+    if not analysis.references:
+        print("<none>")
+    else:
+        for reference in analysis.references:
+            print(
+                f"{reference.path} | "
+                f"{reference.element_name} | "
+                f"{reference.attribute_name} | "
+                f"{reference.component_id}"
+            )
+
+    return 0
+
+
 def _local_component_path(
     component_id: str,
 ) -> Path:
@@ -632,6 +766,66 @@ def _print_process_configuration_element(
 
     for child in element.children:
         _print_process_configuration_element(
+            child,
+            redactor=redactor,
+            indent=indent + 1,
+        )
+
+
+def _print_connector_configuration_element(
+    element: ConnectorConfigurationElement,
+    *,
+    redactor: SensitiveValueRedactor,
+    indent: int,
+) -> None:
+    prefix = "  " * indent
+
+    print(
+        f"{prefix}{element.name}"
+    )
+
+    attributes = dict(
+        element.attributes
+    )
+
+    field_id = (
+        attributes.get("id")
+        if element.name == "field"
+        else None
+    )
+
+    for name, value in element.attributes:
+        redaction_name = name
+
+        if (
+            field_id is not None
+            and name == "value"
+        ):
+            redaction_name = field_id
+
+        safe_value = redactor.redact(
+            redaction_name,
+            value,
+        )
+
+        print(
+            f"{prefix}  @{name} = "
+            f"{safe_value}"
+        )
+
+    if element.text is not None:
+        safe_text = redactor.redact(
+            element.name,
+            element.text,
+        )
+
+        print(
+            f"{prefix}  #text = "
+            f"{safe_text}"
+        )
+
+    for child in element.children:
+        _print_connector_configuration_element(
             child,
             redactor=redactor,
             indent=indent + 1,
@@ -772,6 +966,19 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
     )
 
+    analyze_connector_parser = subparsers.add_parser(
+        "analyze-connector",
+        help=(
+            "Analyze a local discovered Boomi "
+            "connector component."
+        ),
+    )
+
+    analyze_connector_parser.add_argument(
+        "--component-id",
+        required=True,
+    )
+
     return parser
 
 
@@ -814,6 +1021,11 @@ def main() -> int:
 
     if args.command == "analyze-process":
         return analyze_process_command(
+            component_id=args.component_id,
+        )
+
+    if args.command == "analyze-connector":
+        return analyze_connector_command(
             component_id=args.component_id,
         )
 
