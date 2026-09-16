@@ -557,11 +557,15 @@ def analyze_process_command(
     print("--------------------")
 
     for reference in analysis.referenced_components:
+        safe_component_id = redactor.redact(
+            reference.attribute_name,
+            reference.component_id,
+        )
         print(
             f"{reference.shape_name} | "
             f"{reference.element_name} | "
             f"{reference.attribute_name} | "
-            f"{reference.component_id}"
+            f"{safe_component_id}"
         )
 
     return 0
