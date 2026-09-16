@@ -797,6 +797,177 @@ $($passthroughNodes.Count)
                     -Context "shape[$shapeName].catcherrors.retryCount"
             }
 
+            "decision" {
+
+                $decisionNode = $shapeNode.SelectSingleNode(
+                    "./*[local-name()='configuration']/*[local-name()='decision']"
+                )
+
+                if ($null -eq $decisionNode) {
+                    throw "VERIFY ERROR: decision shape '$shapeName' has no decision configuration."
+                }
+
+                if ($decisionNode.Attributes.Count -ne 2) {
+                    throw "VERIFY ERROR: decision shape '$shapeName' contains unexpected decision attributes."
+                }
+
+                Assert-BoomiEqual `
+                    -Expected ([string]$configurationSpec.comparison) `
+                    -Actual (
+                        [string]$decisionNode.GetAttribute(
+                            "comparison"
+                        )
+                    ) `
+                    -Context "shape[$shapeName].decision.comparison"
+
+                Assert-BoomiEqual `
+                    -Expected ([string]$configurationSpec.name) `
+                    -Actual (
+                        [string]$decisionNode.GetAttribute(
+                            "name"
+                        )
+                    ) `
+                    -Context "shape[$shapeName].decision.name"
+
+                $expectedValues = @(
+                    $configurationSpec.values
+                )
+
+                $actualValues = @(
+                    $decisionNode.SelectNodes(
+                        "./*[local-name()='decisionvalue']"
+                    )
+                )
+
+                if (
+                    $actualValues.Count -ne
+                    $expectedValues.Count
+                ) {
+                    throw "VERIFY ERROR: decision shape '$shapeName' value count mismatch."
+                }
+
+                for (
+                    $valueIndex = 0;
+                    $valueIndex -lt $expectedValues.Count;
+                    $valueIndex++
+                ) {
+
+                    $expectedValue = $expectedValues[$valueIndex]
+                    $actualValue = $actualValues[$valueIndex]
+
+                    if ($actualValue.Attributes.Count -ne 1) {
+                        throw "VERIFY ERROR: decisionvalue contains unexpected attributes."
+                    }
+
+                    Assert-BoomiEqual `
+                        -Expected ([string]$expectedValue.valueType) `
+                        -Actual (
+                            [string]$actualValue.GetAttribute(
+                                "valueType"
+                            )
+                        ) `
+                        -Context "shape[$shapeName].decision.values[$valueIndex].valueType"
+
+                    if (
+                        [string]$expectedValue.valueType -eq
+                        "process"
+                    ) {
+
+                        $processParameters = @(
+                            $actualValue.SelectNodes(
+                                "./*[local-name()='processparameter']"
+                            )
+                        )
+
+                        $staticParameters = @(
+                            $actualValue.SelectNodes(
+                                "./*[local-name()='staticparameter']"
+                            )
+                        )
+
+                        if (
+                            $processParameters.Count -ne 1 -or
+                            $staticParameters.Count -ne 0
+                        ) {
+                            throw "VERIFY ERROR: decision process value has invalid child structure."
+                        }
+
+                        $processParameter = $processParameters[0]
+
+                        if (
+                            $processParameter.Attributes.Count -ne 2
+                        ) {
+                            throw "VERIFY ERROR: decision processparameter contains unexpected attributes."
+                        }
+
+                        Assert-BoomiEqual `
+                            -Expected (
+                                [string]$expectedValue.process.processProperty
+                            ) `
+                            -Actual (
+                                [string]$processParameter.GetAttribute(
+                                    "processproperty"
+                                )
+                            ) `
+                            -Context "shape[$shapeName].decision.values[$valueIndex].processProperty"
+
+                        Assert-BoomiEqual `
+                            -Expected (
+                                [string]$expectedValue.process.processPropertyDefaultValue
+                            ) `
+                            -Actual (
+                                [string]$processParameter.GetAttribute(
+                                    "processpropertydefaultvalue"
+                                )
+                            ) `
+                            -Context "shape[$shapeName].decision.values[$valueIndex].processPropertyDefaultValue"
+                    }
+
+                    if (
+                        [string]$expectedValue.valueType -eq
+                        "static"
+                    ) {
+
+                        $staticParameters = @(
+                            $actualValue.SelectNodes(
+                                "./*[local-name()='staticparameter']"
+                            )
+                        )
+
+                        $processParameters = @(
+                            $actualValue.SelectNodes(
+                                "./*[local-name()='processparameter']"
+                            )
+                        )
+
+                        if (
+                            $staticParameters.Count -ne 1 -or
+                            $processParameters.Count -ne 0
+                        ) {
+                            throw "VERIFY ERROR: decision static value has invalid child structure."
+                        }
+
+                        $staticParameter = $staticParameters[0]
+
+                        if (
+                            $staticParameter.Attributes.Count -ne 1
+                        ) {
+                            throw "VERIFY ERROR: decision staticparameter contains unexpected attributes."
+                        }
+
+                        Assert-BoomiEqual `
+                            -Expected (
+                                [string]$expectedValue.static.value
+                            ) `
+                            -Actual (
+                                [string]$staticParameter.GetAttribute(
+                                    "staticproperty"
+                                )
+                            ) `
+                            -Context "shape[$shapeName].decision.values[$valueIndex].static.value"
+                    }
+                }
+            }
             default {
 
                 throw "VERIFY ERROR: No verifier exists for shape type '$($shapeSpec.type)'."

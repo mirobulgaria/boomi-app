@@ -705,6 +705,90 @@ function New-BoomiProcessXml {
                 ) | Out-Null
             }
 
+            "decision" {
+
+                $decisionNode = New-BoomiXmlElement `
+                    -Document $xml `
+                    -Name "decision"
+
+                Add-BoomiXmlAttribute `
+                    -Element $decisionNode `
+                    -Name "comparison" `
+                    -Value ([string]$configurationSpec.comparison)
+
+                Add-BoomiXmlAttribute `
+                    -Element $decisionNode `
+                    -Name "name" `
+                    -Value ([string]$configurationSpec.name)
+
+                foreach (
+                    $valueSpec in
+                    @($configurationSpec.values)
+                ) {
+
+                    $decisionValueNode = New-BoomiXmlElement `
+                        -Document $xml `
+                        -Name "decisionvalue"
+
+                    $valueType = [string]$valueSpec.valueType
+
+                    Add-BoomiXmlAttribute `
+                        -Element $decisionValueNode `
+                        -Name "valueType" `
+                        -Value $valueType
+
+                    if ($valueType -eq "process") {
+
+                        $processParameterNode = New-BoomiXmlElement `
+                            -Document $xml `
+                            -Name "processparameter"
+
+                        Add-BoomiXmlAttribute `
+                            -Element $processParameterNode `
+                            -Name "processproperty" `
+                            -Value (
+                                [string]$valueSpec.process.processProperty
+                            )
+
+                        Add-BoomiXmlAttribute `
+                            -Element $processParameterNode `
+                            -Name "processpropertydefaultvalue" `
+                            -Value (
+                                [string]$valueSpec.process.processPropertyDefaultValue
+                            )
+
+                        $decisionValueNode.AppendChild(
+                            $processParameterNode
+                        ) | Out-Null
+                    }
+
+                    if ($valueType -eq "static") {
+
+                        $staticParameterNode = New-BoomiXmlElement `
+                            -Document $xml `
+                            -Name "staticparameter"
+
+                        Add-BoomiXmlAttribute `
+                            -Element $staticParameterNode `
+                            -Name "staticproperty" `
+                            -Value (
+                                [string]$valueSpec.static.value
+                            )
+
+                        $decisionValueNode.AppendChild(
+                            $staticParameterNode
+                        ) | Out-Null
+                    }
+
+                    $decisionNode.AppendChild(
+                        $decisionValueNode
+                    ) | Out-Null
+                }
+
+                $configurationNode.AppendChild(
+                    $decisionNode
+                ) | Out-Null
+            }
             default {
 
                 throw "BUILD ERROR: No process builder exists for shape type '$shapeType'."

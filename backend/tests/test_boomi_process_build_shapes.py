@@ -553,3 +553,438 @@ def test_batch1_stop_branch_catcherrors_build_contract() -> None:
     assert "BATCH1_BUILD_OK" in result.stdout
     assert "BATCH1_VERIFY_OK" in result.stdout
     assert "BATCH1_STRUCTURE_OK" in result.stdout
+
+def _run_batch2a_decision_harness() -> subprocess.CompletedProcess[str]:
+    app_root = _app_root()
+    cli_root = app_root / "engine" / "boomi-cli"
+    lib_root = cli_root / "lib"
+
+    harness = rf"""
+$ErrorActionPreference = "Stop"
+
+$script:CliRoot = "{cli_root}"
+$script:WorkspaceRoot = "{app_root / "data"}"
+
+. "{lib_root / "Boomi.Common.ps1"}"
+. "{lib_root / "Boomi.Validate.ps1"}"
+. "{lib_root / "Boomi.Build.ps1"}"
+. "{lib_root / "Boomi.Verify.ps1"}"
+
+function Assert-BoomiWriteFolder {{
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Folder
+    )
+
+    if ($Folder -ne "Synthetic/Test") {{
+        throw "Unexpected synthetic folder."
+    }}
+
+    return $true
+}}
+
+function New-DecisionSpec {{
+    param(
+        [Parameter(Mandatory=$true)]
+        [object[]]$Values
+    )
+
+    $raw = [PSCustomObject]@{{
+        component = [PSCustomObject]@{{
+            name = "Synthetic Decision Process"
+            type = "process"
+            folder = "Synthetic/Test"
+        }}
+
+        process = [PSCustomObject]@{{
+            settings = [PSCustomObject]@{{
+                allowSimultaneous = $false
+                enableUserLog = $false
+                processLogOnErrorOnly = $false
+                purgeDataImmediately = $false
+                stopProcessingIfZeroDocuments = $true
+                updateRunDates = $false
+                workload = "general"
+            }}
+
+            shapes = @(
+                [PSCustomObject]@{{
+                    name = "shape1"
+                    type = "start"
+                    image = "start"
+                    label = ""
+                    x = 96
+                    y = 96
+                    configuration = [PSCustomObject]@{{
+                        kind = "passthroughaction"
+                    }}
+                    connections = @(
+                        [PSCustomObject]@{{
+                            name = "shape1.dragpoint1"
+                            toShape = "shape2"
+                            x = 176
+                            y = 96
+                        }}
+                    )
+                }},
+
+                [PSCustomObject]@{{
+                    name = "shape2"
+                    type = "decision"
+                    image = "decision_icon"
+                    label = "Synthetic Decision"
+                    x = 272
+                    y = 96
+                    configuration = [PSCustomObject]@{{
+                        kind = "decision"
+                        name = "Synthetic Decision"
+                        comparison = "equals"
+                        values = $Values
+                    }}
+                    connections = @(
+                        [PSCustomObject]@{{
+                            identifier = "1"
+                            text = "True"
+                            name = "shape2.dragpoint1"
+                            toShape = "shape3"
+                            x = 368
+                            y = 64
+                        }},
+                        [PSCustomObject]@{{
+                            identifier = "2"
+                            text = "False"
+                            name = "shape2.dragpoint2"
+                            toShape = "shape4"
+                            x = 368
+                            y = 160
+                        }}
+                    )
+                }},
+
+                [PSCustomObject]@{{
+                    name = "shape3"
+                    type = "stop"
+                    image = "stop_icon"
+                    label = "Stop True"
+                    x = 464
+                    y = 64
+                    configuration = [PSCustomObject]@{{
+                        kind = "stop"
+                        continue = $true
+                    }}
+                    connections = @()
+                }},
+
+                [PSCustomObject]@{{
+                    name = "shape4"
+                    type = "stop"
+                    image = "stop_icon"
+                    label = "Stop False"
+                    x = 464
+                    y = 160
+                    configuration = [PSCustomObject]@{{
+                        kind = "stop"
+                        continue = $true
+                    }}
+                    connections = @()
+                }}
+            )
+        }}
+    }}
+
+    return [PSCustomObject]@{{
+        Path = "<synthetic>"
+        SpecVersion = "test"
+        ComponentName = "Synthetic Decision Process"
+        ComponentType = "process"
+        Folder = "Synthetic/Test"
+        Raw = $raw
+    }}
+}}
+
+$validValues = @(
+    [PSCustomObject]@{{
+        valueType = "process"
+        process = [PSCustomObject]@{{
+            processProperty = "synthetic.process.property"
+            processPropertyDefaultValue = ""
+        }}
+    }},
+    [PSCustomObject]@{{
+        valueType = "static"
+        static = [PSCustomObject]@{{
+            value = "synthetic-static-value"
+        }}
+    }}
+)
+
+$spec = New-DecisionSpec -Values $validValues
+
+Test-BoomiProcessSpec -SpecResult $spec | Out-Null
+Write-Output "BATCH2A_VALIDATE_OK"
+
+$xml = New-BoomiProcessXml `
+    -SpecResult $spec `
+    -ResolvedReferences @() `
+    -FolderId "synthetic-folder-id" `
+    -BranchId "synthetic-branch-id"
+
+Write-Output "BATCH2A_BUILD_OK"
+
+Test-BoomiGeneratedComponentXml `
+    -SpecResult $spec `
+    -ResolvedReferences @() `
+    -Xml $xml `
+    -FolderId "synthetic-folder-id" `
+    -BranchId "synthetic-branch-id" |
+    Out-Null
+
+Write-Output "BATCH2A_VERIFY_OK"
+
+$decision = $xml.SelectSingleNode(
+    "//*[local-name()='shape' and @shapetype='decision']/*[local-name()='configuration']/*[local-name()='decision']"
+)
+
+if ($null -eq $decision) {{
+    throw "Decision node missing."
+}}
+
+if ($decision.Attributes.Count -ne 2) {{
+    throw "Decision root attribute count mismatch."
+}}
+
+$values = @(
+    $decision.SelectNodes(
+        "./*[local-name()='decisionvalue']"
+    )
+)
+
+if ($values.Count -ne 2) {{
+    throw "Decision value count mismatch."
+}}
+
+if (
+    $values[0].GetAttribute("valueType") -ne "process" -or
+    $values[1].GetAttribute("valueType") -ne "static"
+) {{
+    throw "Decision value order mismatch."
+}}
+
+$processParameter = $values[0].SelectSingleNode(
+    "./*[local-name()='processparameter']"
+)
+
+$staticParameter = $values[1].SelectSingleNode(
+    "./*[local-name()='staticparameter']"
+)
+
+if (
+    $null -eq $processParameter -or
+    $null -eq $staticParameter
+) {{
+    throw "Decision operand structure mismatch."
+}}
+
+if (
+    $processParameter.GetAttribute("processproperty") -ne
+    "synthetic.process.property"
+) {{
+    throw "processproperty mismatch."
+}}
+
+if (
+    $staticParameter.GetAttribute("staticproperty") -ne
+    "synthetic-static-value"
+) {{
+    throw "staticproperty mismatch."
+}}
+
+Write-Output "BATCH2A_STRUCTURE_OK"
+
+$badXml = New-Object System.Xml.XmlDocument
+$badXml.LoadXml($xml.OuterXml)
+
+$badStatic = $badXml.SelectSingleNode(
+    "//*[local-name()='shape' and @shapetype='decision']/*[local-name()='configuration']/*[local-name()='decision']/*[local-name()='decisionvalue' and @valueType='static']/*[local-name()='staticparameter']"
+)
+
+$badStatic.SetAttribute(
+    "staticproperty",
+    "wrong-synthetic-value"
+)
+
+$mutationRejected = $false
+
+try {{
+    Test-BoomiGeneratedComponentXml `
+        -SpecResult $spec `
+        -ResolvedReferences @() `
+        -Xml $badXml `
+        -FolderId "synthetic-folder-id" `
+        -BranchId "synthetic-branch-id" |
+        Out-Null
+}}
+catch {{
+    $mutationRejected = $true
+}}
+
+if (-not $mutationRejected) {{
+    throw "Verifier accepted mutated staticproperty."
+}}
+
+Write-Output "BATCH2A_MUTATION_REJECTED"
+
+$unsupportedValues = @(
+    [PSCustomObject]@{{
+        valueType = "unsupported"
+    }},
+    [PSCustomObject]@{{
+        valueType = "static"
+        static = [PSCustomObject]@{{
+            value = "synthetic"
+        }}
+    }}
+)
+
+$unsupportedRejected = $false
+
+try {{
+    Test-BoomiProcessSpec `
+        -SpecResult (
+            New-DecisionSpec `
+                -Values $unsupportedValues
+        ) |
+        Out-Null
+}}
+catch {{
+    $unsupportedRejected = (
+        $_.Exception.Message -like
+        "*valueType*not currently proven*"
+    )
+}}
+
+if (-not $unsupportedRejected) {{
+    throw "Unsupported valueType was not rejected."
+}}
+
+Write-Output "BATCH2A_UNSUPPORTED_REJECTED"
+
+$oneValue = @(
+    [PSCustomObject]@{{
+        valueType = "static"
+        static = [PSCustomObject]@{{
+            value = "synthetic"
+        }}
+    }}
+)
+
+$cardinalityRejected = $false
+
+try {{
+    Test-BoomiProcessSpec `
+        -SpecResult (
+            New-DecisionSpec `
+                -Values $oneValue
+        ) |
+        Out-Null
+}}
+catch {{
+    $cardinalityRejected = (
+        $_.Exception.Message -like
+        "*requires exactly two values*"
+    )
+}}
+
+if (-not $cardinalityRejected) {{
+    throw "Invalid Decision cardinality was not rejected."
+}}
+
+Write-Output "BATCH2A_CARDINALITY_REJECTED"
+
+$twoStatic = @(
+    [PSCustomObject]@{{
+        valueType = "static"
+        static = [PSCustomObject]@{{
+            value = "synthetic-a"
+        }}
+    }},
+    [PSCustomObject]@{{
+        valueType = "static"
+        static = [PSCustomObject]@{{
+            value = "synthetic-b"
+        }}
+    }}
+)
+
+$combinationRejected = $false
+
+try {{
+    Test-BoomiProcessSpec `
+        -SpecResult (
+            New-DecisionSpec `
+                -Values $twoStatic
+        ) |
+        Out-Null
+}}
+catch {{
+    $combinationRejected = (
+        $_.Exception.Message -like
+        "*exactly one process value and one static value*"
+    )
+}}
+
+if (-not $combinationRejected) {{
+    throw "Invalid Decision value combination was not rejected."
+}}
+
+Write-Output "BATCH2A_COMBINATION_REJECTED"
+"""
+
+    with tempfile.TemporaryDirectory(
+        prefix="boomi-builder-decision-"
+    ) as temp_dir:
+        script_path = Path(temp_dir) / "decision_acceptance.ps1"
+        script_path.write_text(
+            harness,
+            encoding="utf-8",
+        )
+
+        return subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(script_path),
+            ],
+            cwd=app_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+
+def test_batch2a_decision_build_contract() -> None:
+    result = _run_batch2a_decision_harness()
+
+    assert result.returncode == 0, (
+        "Batch 2A PowerShell harness failed.\n"
+        f"stdout:\n{result.stdout}\n"
+        f"stderr:\n{result.stderr}"
+    )
+
+    expected_markers = (
+        "BATCH2A_VALIDATE_OK",
+        "BATCH2A_BUILD_OK",
+        "BATCH2A_VERIFY_OK",
+        "BATCH2A_STRUCTURE_OK",
+        "BATCH2A_MUTATION_REJECTED",
+        "BATCH2A_UNSUPPORTED_REJECTED",
+        "BATCH2A_CARDINALITY_REJECTED",
+        "BATCH2A_COMBINATION_REJECTED",
+    )
+
+    for marker in expected_markers:
+        assert marker in result.stdout

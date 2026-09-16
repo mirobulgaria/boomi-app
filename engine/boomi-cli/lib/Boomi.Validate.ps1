@@ -412,7 +412,8 @@ function Test-BoomiProcessSpec {
             "returndocuments",
             "stop",
             "branch",
-            "catcherrors"
+            "catcherrors",
+            "decision"
         )
 
         if ($supportedShapeTypes -notcontains $shapeType) {
@@ -631,6 +632,110 @@ $($supportedStartKinds -join ", ")
                     -PropertyName "retryCount" `
                     -Context "process.shapes[$shapeName].configuration" |
                     Out-Null
+            }
+
+            "decision" {
+
+                if ($kind -ne "decision") {
+                    throw "SPEC VALIDATION ERROR: decision shape '$shapeName' requires configuration.kind='decision'."
+                }
+
+                Test-BoomiRequiredString `
+                    -Object $configuration `
+                    -PropertyName "name" `
+                    -Context "process.shapes[$shapeName].configuration" `
+                    -AllowEmpty |
+                    Out-Null
+
+                Test-BoomiRequiredString `
+                    -Object $configuration `
+                    -PropertyName "comparison" `
+                    -Context "process.shapes[$shapeName].configuration" |
+                    Out-Null
+
+                $valuesProperty = Test-BoomiRequiredProperty `
+                    -Object $configuration `
+                    -PropertyName "values" `
+                    -Context "process.shapes[$shapeName].configuration"
+
+                $values = @(
+                    $valuesProperty
+                )
+
+                if ($values.Count -ne 2) {
+                    throw "SPEC VALIDATION ERROR: decision shape '$shapeName' requires exactly two values for the currently proven contract."
+                }
+
+                foreach ($value in $values) {
+
+                    $valueType = Test-BoomiRequiredString `
+                        -Object $value `
+                        -PropertyName "valueType" `
+                        -Context "process.shapes[$shapeName].configuration.values"
+
+                    if ($valueType -eq "process") {
+
+                        $processValue = Test-BoomiRequiredProperty `
+                            -Object $value `
+                            -PropertyName "process" `
+                            -Context "process.shapes[$shapeName].configuration.values"
+
+                        Test-BoomiRequiredString `
+                            -Object $processValue `
+                            -PropertyName "processProperty" `
+                            -Context "process.shapes[$shapeName].configuration.values.process" |
+                            Out-Null
+
+                        Test-BoomiRequiredString `
+                            -Object $processValue `
+                            -PropertyName "processPropertyDefaultValue" `
+                            -Context "process.shapes[$shapeName].configuration.values.process" `
+                            -AllowEmpty |
+                            Out-Null
+
+                        continue
+                    }
+
+                    if ($valueType -eq "static") {
+
+                        $staticValue = Test-BoomiRequiredProperty `
+                            -Object $value `
+                            -PropertyName "static" `
+                            -Context "process.shapes[$shapeName].configuration.values"
+
+                        Test-BoomiRequiredString `
+                            -Object $staticValue `
+                            -PropertyName "value" `
+                            -Context "process.shapes[$shapeName].configuration.values.static" `
+                            -AllowEmpty |
+                            Out-Null
+
+                        continue
+                    }
+
+                    throw "SPEC VALIDATION ERROR: decision shape '$shapeName' valueType '$valueType' is not currently proven. Supported: process, static"
+                }
+
+                $processValueCount = @(
+                    $values |
+                        Where-Object {
+                            [string]$_.valueType -eq "process"
+                        }
+                ).Count
+
+                $staticValueCount = @(
+                    $values |
+                        Where-Object {
+                            [string]$_.valueType -eq "static"
+                        }
+                ).Count
+
+                if (
+                    $processValueCount -ne 1 -or
+                    $staticValueCount -ne 1
+                ) {
+                    throw "SPEC VALIDATION ERROR: decision shape '$shapeName' requires exactly one process value and one static value for the currently proven contract."
+                }
             }
         }
 
