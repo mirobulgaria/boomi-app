@@ -15,6 +15,312 @@
 # ============================================================
 
 
+function Invoke-BoomiCapabilityInventoryProbe {
+
+    Write-Host ""
+    Write-Host "Boomi Capability Inventory"
+    Write-Host "=========================="
+    Write-Host ""
+    Write-Host "Stage                    : full metadata inventory"
+    Write-Host "Object                   : ComponentMetadata"
+    Write-Host "Operation                : QUERY + queryMore"
+    Write-Host "Component definitions    : NOT REQUESTED"
+    Write-Host "Mutation operations      : NONE"
+    Write-Host ""
+
+    # --------------------------------------------------------
+    # Initial query
+    # --------------------------------------------------------
+
+    $body = @{
+        QueryFilter = @{}
+    } | ConvertTo-Json -Depth 10
+
+    try {
+
+        $response = Invoke-RestMethod `
+            -Method Post `
+            -Uri "$script:BaseUrl/ComponentMetadata/query" `
+            -Headers $script:JsonHeaders `
+            -Body (
+                [Text.Encoding]::UTF8.GetBytes(
+                    $body
+                )
+            )
+    }
+    catch {
+
+        Write-Host "ComponentMetadata/query  : REJECTED"
+        Write-Host "Definitions requested    : 0"
+        Write-Host "Mutation calls            : 0"
+
+        throw "CAPABILITY INVENTORY: Initial ComponentMetadata/query failed."
+    }
+
+    Write-Host "ComponentMetadata/query  : ACCEPTED"
+
+    # --------------------------------------------------------
+    # Accumulate first page
+    # --------------------------------------------------------
+
+    $results = @()
+
+    if ($null -ne $response.result) {
+
+        foreach ($item in @($response.result)) {
+
+            if ($null -ne $item) {
+                $results += $item
+            }
+        }
+    }
+
+    $initialResultCount = $results.Count
+
+    $reportedResultCount = $null
+
+    if (
+        $null -ne
+        $response.PSObject.Properties["numberOfResults"]
+    ) {
+        $reportedResultCount = [int]$response.numberOfResults
+    }
+
+    $queryToken = [string]$response.queryToken
+
+    $queryPages = 1
+    $queryMoreCalls = 0
+
+    # --------------------------------------------------------
+    # Pagination
+    #
+    # Uses the same proven transport contract as the existing
+    # Environment/queryMore implementation:
+    #
+    # POST
+    # Content-Type: text/plain; charset=utf-8
+    # body: raw UTF-8 queryToken
+    # --------------------------------------------------------
+
+    while (
+        -not [string]::IsNullOrWhiteSpace(
+            $queryToken
+        )
+    ) {
+
+        $queryMoreHeaders = @{}
+
+        foreach ($key in $script:JsonHeaders.Keys) {
+            $queryMoreHeaders[$key] = $script:JsonHeaders[$key]
+        }
+
+        $queryMoreHeaders["Content-Type"] = `
+            "text/plain; charset=utf-8"
+
+        try {
+
+            $nextResponse = Invoke-RestMethod `
+                -Method Post `
+                -Uri "$script:BaseUrl/ComponentMetadata/queryMore" `
+                -Headers $queryMoreHeaders `
+                -Body (
+                    [Text.Encoding]::UTF8.GetBytes(
+                        $queryToken
+                    )
+                )
+        }
+        catch {
+
+            Write-Host ""
+            Write-Host "ComponentMetadata/queryMore : FAILED"
+            Write-Host "Completed queryMore calls    : $queryMoreCalls"
+            Write-Host "Objects accumulated          : $($results.Count)"
+            Write-Host "Definitions requested        : 0"
+            Write-Host "Mutation calls               : 0"
+
+            throw "CAPABILITY INVENTORY: ComponentMetadata/queryMore failed."
+        }
+
+        $queryMoreCalls++
+        $queryPages++
+
+        if ($null -ne $nextResponse.result) {
+
+            foreach ($item in @($nextResponse.result)) {
+
+                if ($null -ne $item) {
+                    $results += $item
+                }
+            }
+        }
+
+        $queryToken = [string]$nextResponse.queryToken
+    }
+
+    # --------------------------------------------------------
+    # Completeness gates
+    # --------------------------------------------------------
+
+    Write-Host ""
+    Write-Host "===== INVENTORY COMPLETENESS ====="
+
+    Write-Host "Initial page objects     : $initialResultCount"
+    Write-Host "Metadata objects scanned : $($results.Count)"
+    Write-Host "Query pages              : $queryPages"
+    Write-Host "queryMore calls          : $queryMoreCalls"
+
+    if ($null -ne $reportedResultCount) {
+
+        Write-Host "API reported results     : $reportedResultCount"
+
+        if ($results.Count -ne $reportedResultCount) {
+
+            throw (
+                "CAPABILITY INVENTORY: Accumulated metadata count " +
+                "$($results.Count) does not match API-reported " +
+                "count $reportedResultCount."
+            )
+        }
+
+        Write-Host "Result count match       : PASS"
+    }
+    else {
+
+        Write-Host "API reported results     : <not present>"
+        Write-Host "Result count match       : NOT AVAILABLE"
+    }
+
+    if (
+        -not [string]::IsNullOrWhiteSpace(
+            $queryToken
+        )
+    ) {
+        throw "CAPABILITY INVENTORY: Pagination did not terminate."
+    }
+
+    Write-Host "Pagination terminated    : PASS"
+
+    # --------------------------------------------------------
+    # Component type aggregation
+    # --------------------------------------------------------
+
+    $typeCounts = @(
+        $results |
+            Where-Object {
+                $null -ne
+                $_.PSObject.Properties["type"]
+            } |
+            Group-Object -Property type |
+            Sort-Object Name
+    )
+
+    Write-Host ""
+    Write-Host "===== COMPONENT TYPES ====="
+
+    if ($typeCounts.Count -eq 0) {
+
+        Write-Host "  <none>"
+    }
+    else {
+
+        foreach ($group in $typeCounts) {
+
+            Write-Host (
+                "  {0,-30} {1}" -f `
+                    [string]$group.Name,
+                    $group.Count
+            )
+        }
+    }
+
+    # --------------------------------------------------------
+    # Process inventory
+    # --------------------------------------------------------
+
+    $processes = @(
+        $results |
+            Where-Object {
+                [string]$_.type -eq "process"
+            }
+    )
+
+    $deletedProcesses = @(
+        $processes |
+            Where-Object {
+
+                $deletedProperty = `
+                    $_.PSObject.Properties["deleted"]
+
+                if ($null -eq $deletedProperty) {
+                    return $false
+                }
+
+                return (
+                    [string]$deletedProperty.Value
+                ).ToLowerInvariant() -eq "true"
+            }
+    )
+
+    $activeProcesses = @(
+        $processes |
+            Where-Object {
+
+                $deletedProperty = `
+                    $_.PSObject.Properties["deleted"]
+
+                if ($null -eq $deletedProperty) {
+                    return $true
+                }
+
+                return (
+                    [string]$deletedProperty.Value
+                ).ToLowerInvariant() -ne "true"
+            }
+    )
+
+    Write-Host ""
+    Write-Host "===== PROCESS INVENTORY ====="
+    Write-Host "Process components       : $($processes.Count)"
+    Write-Host "Deleted processes        : $($deletedProcesses.Count)"
+    Write-Host "Active processes         : $($activeProcesses.Count)"
+
+    if (
+        (
+            $deletedProcesses.Count +
+            $activeProcesses.Count
+        ) -ne
+        $processes.Count
+    ) {
+        throw "CAPABILITY INVENTORY: Process classification count mismatch."
+    }
+
+    Write-Host "Process count integrity  : PASS"
+
+    # --------------------------------------------------------
+    # Security / read boundary
+    # --------------------------------------------------------
+
+    Write-Host ""
+    Write-Host "===== SECURITY ====="
+    Write-Host "Component names printed  : False"
+    Write-Host "Component IDs printed    : False"
+    Write-Host "Folder names printed     : False"
+    Write-Host "Definitions printed      : False"
+    Write-Host "Business data printed    : False"
+    Write-Host "Credentials printed      : False"
+
+    Write-Host ""
+    Write-Host "===== API OPERATION COUNTS ====="
+    Write-Host "Initial metadata queries : 1"
+    Write-Host "queryMore calls          : $queryMoreCalls"
+    Write-Host "Component GET calls      : 0"
+    Write-Host "Definitions requested    : 0"
+    Write-Host "Mutation calls            : 0"
+
+    Write-Host ""
+    Write-Host "CAPABILITY INVENTORY : PASS"
+}
+
 function Search-BoomiComponent {
 
     param(

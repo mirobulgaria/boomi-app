@@ -8,6 +8,7 @@ param(
         "inspect",
         "list-environments",
         "get-environment-extensions",
+        "capability-inventory",
         "create-preview",
         "create",
         "create-empty-process",
@@ -178,7 +179,8 @@ if ($RuntimeMode -eq "app-readonly") {
     "get",
     "get-definition",
     "list-environments",
-    "get-environment-extensions"
+    "get-environment-extensions",
+    "capability-inventory"
     )
 
     if ($Command -notin $AppReadOnlyCommands) {
@@ -287,6 +289,11 @@ switch ($Command) {
 
         Get-BoomiComponentDefinitionXml `
             -Id $Id
+    }
+
+    "capability-inventory" {
+
+        Invoke-BoomiCapabilityInventoryProbe
     }
 
     "export" {
