@@ -409,7 +409,10 @@ function Test-BoomiProcessSpec {
             "map",
             "connectoraction",
             "processcall",
-            "returndocuments"
+            "returndocuments",
+            "stop",
+            "branch",
+            "catcherrors"
         )
 
         if ($supportedShapeTypes -notcontains $shapeType) {
@@ -582,6 +585,51 @@ $($supportedStartKinds -join ", ")
                     -PropertyName "label" `
                     -Context "process.shapes[$shapeName].configuration" `
                     -AllowEmpty |
+                    Out-Null
+            }
+
+            "stop" {
+
+                if ($kind -ne "stop") {
+                    throw "SPEC VALIDATION ERROR: stop shape '$shapeName' requires configuration.kind='stop'."
+                }
+
+                Test-BoomiRequiredBoolean `
+                    -Object $configuration `
+                    -PropertyName "continue" `
+                    -Context "process.shapes[$shapeName].configuration" |
+                    Out-Null
+            }
+
+            "branch" {
+
+                if ($kind -ne "branch") {
+                    throw "SPEC VALIDATION ERROR: branch shape '$shapeName' requires configuration.kind='branch'."
+                }
+
+                Test-BoomiRequiredNumber `
+                    -Object $configuration `
+                    -PropertyName "numBranches" `
+                    -Context "process.shapes[$shapeName].configuration" |
+                    Out-Null
+            }
+
+            "catcherrors" {
+
+                if ($kind -ne "catcherrors") {
+                    throw "SPEC VALIDATION ERROR: catcherrors shape '$shapeName' requires configuration.kind='catcherrors'."
+                }
+
+                Test-BoomiRequiredBoolean `
+                    -Object $configuration `
+                    -PropertyName "catchAll" `
+                    -Context "process.shapes[$shapeName].configuration" |
+                    Out-Null
+
+                Test-BoomiRequiredNumber `
+                    -Object $configuration `
+                    -PropertyName "retryCount" `
+                    -Context "process.shapes[$shapeName].configuration" |
                     Out-Null
             }
         }

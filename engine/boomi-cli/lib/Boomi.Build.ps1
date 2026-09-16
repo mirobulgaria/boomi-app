@@ -636,6 +636,75 @@ function New-BoomiProcessXml {
                 ) | Out-Null
             }
 
+            "stop" {
+
+                $stopNode = New-BoomiXmlElement `
+                    -Document $xml `
+                    -Name "stop"
+
+                Add-BoomiXmlAttribute `
+                    -Element $stopNode `
+                    -Name "continue" `
+                    -Value (
+                        ConvertTo-BoomiXmlBoolean `
+                            -Value ([bool]$configurationSpec.continue)
+                    )
+
+                $configurationNode.AppendChild(
+                    $stopNode
+                ) | Out-Null
+            }
+
+            "branch" {
+
+                $branchNode = New-BoomiXmlElement `
+                    -Document $xml `
+                    -Name "branch"
+
+                Add-BoomiXmlAttribute `
+                    -Element $branchNode `
+                    -Name "numBranches" `
+                    -Value (
+                        [Convert]::ToString(
+                            [double]$configurationSpec.numBranches,
+                            [Globalization.CultureInfo]::InvariantCulture
+                        )
+                    )
+
+                $configurationNode.AppendChild(
+                    $branchNode
+                ) | Out-Null
+            }
+
+            "catcherrors" {
+
+                $catchErrorsNode = New-BoomiXmlElement `
+                    -Document $xml `
+                    -Name "catcherrors"
+
+                Add-BoomiXmlAttribute `
+                    -Element $catchErrorsNode `
+                    -Name "catchAll" `
+                    -Value (
+                        ConvertTo-BoomiXmlBoolean `
+                            -Value ([bool]$configurationSpec.catchAll)
+                    )
+
+                Add-BoomiXmlAttribute `
+                    -Element $catchErrorsNode `
+                    -Name "retryCount" `
+                    -Value (
+                        [Convert]::ToString(
+                            [double]$configurationSpec.retryCount,
+                            [Globalization.CultureInfo]::InvariantCulture
+                        )
+                    )
+
+                $configurationNode.AppendChild(
+                    $catchErrorsNode
+                ) | Out-Null
+            }
+
             default {
 
                 throw "BUILD ERROR: No process builder exists for shape type '$shapeType'."
@@ -668,6 +737,17 @@ function New-BoomiProcessXml {
                     -Element $dragpointNode `
                     -Name "identifier" `
                     -Value ([string]$connectionSpec.identifier)
+            }
+
+            if (
+                $null -ne
+                $connectionSpec.PSObject.Properties["text"]
+            ) {
+
+                Add-BoomiXmlAttribute `
+                    -Element $dragpointNode `
+                    -Name "text" `
+                    -Value ([string]$connectionSpec.text)
             }
 
             Add-BoomiXmlAttribute `

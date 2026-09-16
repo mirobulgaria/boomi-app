@@ -703,6 +703,100 @@ $($passthroughNodes.Count)
                     -Context "shape[$shapeName].returndocuments.label"
             }
 
+            "stop" {
+
+                $stopNode = $shapeNode.SelectSingleNode(
+                    "./*[local-name()='configuration']/*[local-name()='stop']"
+                )
+
+                if (-not $stopNode) {
+                    throw "VERIFY ERROR: stop shape '$shapeName' has no stop configuration."
+                }
+
+                if ($stopNode.Attributes.Count -ne 1) {
+                    throw "VERIFY ERROR: stop shape '$shapeName' contains unexpected configuration attributes."
+                }
+
+                if (-not $stopNode.HasAttribute("continue")) {
+                    throw "VERIFY ERROR: stop shape '$shapeName' has no continue attribute."
+                }
+
+                if ($stopNode.HasChildNodes) {
+                    throw "VERIFY ERROR: stop shape '$shapeName' contains unexpected configuration child nodes."
+                }
+
+                Assert-BoomiXmlBoolean `
+                    -Expected ([bool]$configurationSpec.continue) `
+                    -Actual ([string]$stopNode.continue) `
+                    -Context "shape[$shapeName].stop.continue"
+            }
+
+            "branch" {
+
+                $branchNode = $shapeNode.SelectSingleNode(
+                    "./*[local-name()='configuration']/*[local-name()='branch']"
+                )
+
+                if (-not $branchNode) {
+                    throw "VERIFY ERROR: branch shape '$shapeName' has no branch configuration."
+                }
+
+                if ($branchNode.Attributes.Count -ne 1) {
+                    throw "VERIFY ERROR: branch shape '$shapeName' contains unexpected configuration attributes."
+                }
+
+                if (-not $branchNode.HasAttribute("numBranches")) {
+                    throw "VERIFY ERROR: branch shape '$shapeName' has no numBranches attribute."
+                }
+
+                if ($branchNode.HasChildNodes) {
+                    throw "VERIFY ERROR: branch shape '$shapeName' contains unexpected configuration child nodes."
+                }
+
+                Assert-BoomiXmlNumber `
+                    -Expected ([double]$configurationSpec.numBranches) `
+                    -Actual ([string]$branchNode.numBranches) `
+                    -Context "shape[$shapeName].branch.numBranches"
+            }
+
+            "catcherrors" {
+
+                $catchErrorsNode = $shapeNode.SelectSingleNode(
+                    "./*[local-name()='configuration']/*[local-name()='catcherrors']"
+                )
+
+                if (-not $catchErrorsNode) {
+                    throw "VERIFY ERROR: catcherrors shape '$shapeName' has no catcherrors configuration."
+                }
+
+                if ($catchErrorsNode.Attributes.Count -ne 2) {
+                    throw "VERIFY ERROR: catcherrors shape '$shapeName' contains unexpected configuration attributes."
+                }
+
+                foreach ($attributeName in @(
+                    "catchAll",
+                    "retryCount"
+                )) {
+                    if (-not $catchErrorsNode.HasAttribute($attributeName)) {
+                        throw "VERIFY ERROR: catcherrors shape '$shapeName' is missing attribute '$attributeName'."
+                    }
+                }
+
+                if ($catchErrorsNode.HasChildNodes) {
+                    throw "VERIFY ERROR: catcherrors shape '$shapeName' contains unexpected configuration child nodes."
+                }
+
+                Assert-BoomiXmlBoolean `
+                    -Expected ([bool]$configurationSpec.catchAll) `
+                    -Actual ([string]$catchErrorsNode.catchAll) `
+                    -Context "shape[$shapeName].catcherrors.catchAll"
+
+                Assert-BoomiXmlNumber `
+                    -Expected ([double]$configurationSpec.retryCount) `
+                    -Actual ([string]$catchErrorsNode.retryCount) `
+                    -Context "shape[$shapeName].catcherrors.retryCount"
+            }
+
             default {
 
                 throw "VERIFY ERROR: No verifier exists for shape type '$($shapeSpec.type)'."
@@ -771,6 +865,20 @@ $($xmlConnections.Count)
                 -Expected $expectedIdentifier `
                 -Actual ([string]$xmlConnection.identifier) `
                 -Context "shape[$shapeName].connections[$i].identifier"
+
+            $expectedText = ""
+
+            if (
+                $null -ne
+                $specConnection.PSObject.Properties["text"]
+            ) {
+                $expectedText = [string]$specConnection.text
+            }
+
+            Assert-BoomiEqual `
+                -Expected $expectedText `
+                -Actual ([string]$xmlConnection.text) `
+                -Context "shape[$shapeName].connections[$i].text"
 
             Assert-BoomiXmlNumber `
                 -Expected ([double]$specConnection.x) `
