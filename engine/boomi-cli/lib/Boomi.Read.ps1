@@ -424,9 +424,14 @@ function Get-BoomiEnvironmentsByClassification {
 
 function Show-BoomiEnvironments {
 
-    Write-Host ""
-    Write-Host "Boomi Environments"
-    Write-Host "=================="
+    param(
+        [Parameter()]
+        [ValidateSet(
+            "human",
+            "json"
+        )]
+        [string]$OutputFormat = "human"
+    )
 
     $testEnvironments = @(
         Get-BoomiEnvironmentsByClassification `
@@ -465,6 +470,37 @@ function Show-BoomiEnvironments {
             Sort-Object id -Unique |
             Sort-Object classification, name
     )
+
+    if ($OutputFormat -eq "json") {
+
+        $data = @(
+            $uniqueEnvironments |
+                ForEach-Object {
+                    [ordered]@{
+                        id = [string]$_.id
+                        name = [string]$_.name
+                        classification = [string]$_.classification
+                    }
+                }
+        )
+
+        $payload = [ordered]@{
+            success = $true
+            operation = "list-environments"
+            data = $data
+        }
+
+        $payload |
+            ConvertTo-Json `
+                -Depth 8 `
+                -Compress
+
+        return
+    }
+
+    Write-Host ""
+    Write-Host "Boomi Environments"
+    Write-Host "=================="
 
     Write-Host ""
     Write-Host "Results : $($uniqueEnvironments.Count)"

@@ -310,7 +310,8 @@ switch ($Command) {
     }
 
     "list-environments" {
-        Show-BoomiEnvironments
+    Show-BoomiEnvironments `
+        -OutputFormat $OutputFormat
     }
 
     "get-environment-extensions" {

@@ -41,6 +41,13 @@ class BoomiComponentDefinitionResult:
     xml: str
 
 
+@dataclass(frozen=True)
+class BoomiEnvironmentResult:
+    environment_id: str
+    name: str
+    classification: str
+
+
 class BoomiEngineError(RuntimeError):
     pass
 
@@ -265,19 +272,160 @@ class BoomiEngineAdapter:
             xml=xml_text,
         )
 
+    def list_environments(
+        self,
+        *,
+        workspace: Path,
+        environment: Mapping[str, str],
+    ) -> tuple[BoomiEnvironmentResult, ...]:
+        resolved_workspace = self._validate_workspace(
+            workspace
+        )
+
+        result = self.runner.run_script(
+            self.paths.boomi_cli_path,
+            arguments=[
+                "list-environments",
+                "-Workspace",
+                str(resolved_workspace),
+                "-OutputFormat",
+                "json",
+                "-RuntimeMode",
+                "app-readonly",
+            ],
+            environment=environment,
+        )
+
+        self._validate_process_result(
+            result,
+            operation="list-environments",
+        )
+
+        try:
+            payload = json.loads(
+                result.stdout
+            )
+        except json.JSONDecodeError as exc:
+            raise BoomiEngineContractError(
+                "Embedded Boomi CLI returned invalid JSON."
+            ) from exc
+
+        if not isinstance(
+            payload,
+            dict,
+        ):
+            raise BoomiEngineContractError(
+                "Embedded Boomi CLI JSON root must be an object."
+            )
+
+        if payload.get("success") is not True:
+            raise BoomiEngineContractError(
+                "Embedded Boomi CLI did not report success=true."
+            )
+
+        if (
+            payload.get("operation")
+            != "list-environments"
+        ):
+            raise BoomiEngineContractError(
+                "Embedded Boomi CLI returned an unexpected operation."
+            )
+
+        data = payload.get(
+            "data"
+        )
+
+        if not isinstance(
+            data,
+            list,
+        ):
+            raise BoomiEngineContractError(
+                "Embedded Boomi CLI environment "
+                "data must be an array."
+            )
+
+        environments: list[
+            BoomiEnvironmentResult
+        ] = []
+
+        seen_ids: set[str] = set()
+
+        for item in data:
+            if not isinstance(
+                item,
+                dict,
+            ):
+                raise BoomiEngineContractError(
+                    "Embedded Boomi CLI environment "
+                    "entry must be an object."
+                )
+
+            self._require_string(
+                item,
+                "id",
+            )
+
+            self._require_string(
+                item,
+                "name",
+            )
+
+            self._require_string(
+                item,
+                "classification",
+            )
+
+            environment_id = item["id"]
+
+            if environment_id in seen_ids:
+                raise BoomiEngineContractError(
+                    "Embedded Boomi CLI returned "
+                    "a duplicate environment ID."
+                )
+
+            seen_ids.add(
+                environment_id
+            )
+
+            environments.append(
+                BoomiEnvironmentResult(
+                    environment_id=environment_id,
+                    name=item["name"],
+                    classification=(
+                        item["classification"]
+                    ),
+                )
+            )
+
+        return tuple(
+            environments
+        )
+
+    @staticmethod
+    def _validate_workspace(
+        workspace: Path,
+    ) -> Path:
+        resolved_workspace = workspace.resolve()
+
+        if not resolved_workspace.is_dir():
+            raise ValueError(
+                "Workspace directory was not found: "
+                f"{resolved_workspace}"
+            )
+
+        return resolved_workspace
+
     @staticmethod
     def _validate_request(
         *,
         workspace: Path,
         component_id: str,
     ) -> Path:
-        resolved_workspace = workspace.resolve()
-
-        if not resolved_workspace.is_dir():
-            raise ValueError(
-                f"Workspace directory was not found: "
-                f"{resolved_workspace}"
+        resolved_workspace = (
+            BoomiEngineAdapter._validate_workspace(
+                workspace
             )
+        )
 
         if not component_id.strip():
             raise ValueError(
