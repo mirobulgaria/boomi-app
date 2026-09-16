@@ -285,9 +285,68 @@ Possible management states:
 
 ---
 
+## BoomiCapability
+
+Represents an explicitly registered Boomi platform capability available to the deterministic creation engine.
+
+Core fields:
+
+- `capability_id`
+- `category`
+- `boomi_type`
+- `boomi_subtype`
+- `variant`
+- `status`
+- `documentation_evidence`
+- `serialization_evidence`
+- `supported_constraints`
+- `unsupported_variants`
+- `validator_contract`
+- `builder_contract`
+- `verifier_contract`
+- `regression_evidence`
+- `live_round_trip_evidence`
+- `last_documentation_reviewed_at`
+
+Allowed status values:
+
+- `SUPPORTED`
+- `PARTIALLY SUPPORTED`
+- `EVIDENCE REQUIRED`
+
+`SUPPORTED` applies only to the explicitly declared capability contract.
+
+It must not imply support for undocumented or unimplemented variants of the same Boomi component or process shape.
+
+A `PARTIALLY SUPPORTED` capability is writable only inside its explicitly registered subset.
+
+An `EVIDENCE REQUIRED` capability is build-blocked.
+
+Capability status represents Boomi platform engineering state and must remain separate from project-specific business evidence.
+
+A `BoomiCapability` may describe:
+
+- a process shape;
+- a process-shape variant;
+- a connector family;
+- a Connection component contract;
+- an Operation component contract;
+- a parameter-value variant;
+- another deterministic Boomi creation capability.
+
+The authoritative human-readable capability registry is:
+
+`docs/BOOMI_CAPABILITY_COMPLIANCE.md`
+
+---
 ## DesiredComponent
 
 Approved or proposed Desired State.
+A `DesiredComponent` may use only `BoomiCapability` variants that the deterministic engine can validate and serialize.
+
+An `EVIDENCE REQUIRED` capability is build-blocked.
+
+A `PARTIALLY SUPPORTED` capability is writable only inside its explicitly declared subset.
 
 Core fields:
 
@@ -335,6 +394,9 @@ Classification:
 ## BuildPlan
 
 Ordered proposed change set.
+A `BuildPlan` must not contain an executable write step for an unresolved `EVIDENCE REQUIRED` capability.
+
+Capability validation must complete before the plan can authorize a deterministic write step.
 
 Core fields:
 
@@ -453,6 +515,18 @@ Secret material is forbidden in AuditEvent metadata.
 ---
 
 ## Core relationships
+Additional capability relationships:
+
+`BoomiCapability`
+- has documentation, serialization, regression and optional live round-trip evidence;
+- constrains the writable variants available to `DesiredComponent`;
+- constrains executable write steps in `BuildPlan`.
+
+`DesiredComponent`
+- may reference one or more `BoomiCapability` variants required to represent its desired state.
+
+`BuildPlan`
+- may execute only capability variants whose registered status and supported subset permit deterministic creation.
 
 User
   1 ─── * BoomiConnection

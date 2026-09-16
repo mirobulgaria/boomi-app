@@ -96,3 +96,60 @@ The standalone CLI lives outside this repository under:
 C:\Users\miroslav.kostov\Boomi\boomi-cli
 
 Boomi Builder development MUST NOT automatically modify the standalone CLI.
+## Capability development gate
+
+Every new or materially expanded writable Boomi capability must follow the capability compliance lifecycle.
+
+Required sequence:
+
+1. review the current official Boomi documentation;
+2. identify documented semantic variants, constraints, cardinality, dependencies and runtime requirements;
+3. collect authoritative Boomi component XML for the variants being implemented;
+4. define the Builder desired-state capability contract;
+5. define unsupported variants explicitly;
+6. implement deterministic validation;
+7. implement deterministic XML generation;
+8. implement independent generated-XML verification;
+9. add positive regression tests;
+10. add meaningful negative regression tests;
+11. run targeted regression;
+12. run the full regression suite;
+13. perform a controlled live round-trip when required for write confidence;
+14. update `docs/BOOMI_CAPABILITY_COMPLIANCE.md`.
+
+The following do not independently establish generic Boomi support:
+
+- a passing XML generation test;
+- a single discovered Boomi component;
+- a single working project scenario;
+- naming similarity;
+- an AI inference;
+- an undocumented default.
+
+If documentation and serialization evidence are incomplete, the capability must remain:
+
+- `PARTIALLY SUPPORTED`; or
+- `EVIDENCE REQUIRED`.
+
+Unsupported variants must fail deterministically before a Boomi API write.
+
+Development must prefer explicit build refusal over generation of a component whose Boomi contract has not been proven.
+
+## Capability regression rule
+
+Every writable capability requires positive and meaningful negative regression coverage.
+
+Negative coverage should include, where applicable:
+
+- invalid numeric ranges;
+- invalid enumerated values;
+- unsupported variants;
+- cardinality violations;
+- invalid component references;
+- invalid topology;
+- mutually incompatible options;
+- unexpected serialization.
+
+Regression evidence proves continued implementation behavior for an already declared capability contract.
+
+Regression evidence does not expand the capability contract by itself.

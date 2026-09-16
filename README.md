@@ -11,6 +11,13 @@ The first real-world validation project is **SAP ↔ ZTE (AMI/AMR)**. That proje
 ## Current status
 
 Boomi Builder is under active development.
+The deterministic creation pipeline is now governed by an explicit Boomi capability compliance model.
+
+Writable support requires both current official Boomi documentation for platform semantics and authoritative Boomi component evidence for serialization.
+
+Capabilities are classified as `SUPPORTED`, `PARTIALLY SUPPORTED`, or `EVIDENCE REQUIRED`.
+
+The authoritative capability registry is [Boomi Capability Compliance](docs/BOOMI_CAPABILITY_COMPLIANCE.md).
 
 The deterministic read-only foundation for understanding existing Boomi integrations is implemented. The planned analyzer expansion phase has reached its current MVP cut-off.
 
@@ -35,6 +42,9 @@ Authoritative project documentation:
 - [Development guide](docs/DEVELOPMENT.md)
 
 ## Implemented capabilities
+The capabilities below describe implemented application functionality. Their presence does not by itself imply complete writable support for every Boomi variant of the corresponding component, connector or process shape.
+
+Writable support is defined by `docs/BOOMI_CAPABILITY_COMPLIANCE.md`.
 
 ### Application foundation
 
@@ -394,6 +404,23 @@ The following product capabilities are planned and must not be treated as comple
 The embedded engine may already contain lower-level capabilities related to some future write operations. Their existence does not make them authorized application write paths.
 
 ## Next development checkpoint
+Before further writable process-shape expansion, the deterministic creation pipeline must pass Boomi capability compliance remediation.
+
+The immediate capability order is:
+
+1. Start
+2. Map
+3. Connector Action
+4. Return Documents
+5. Process Call
+6. Stop
+7. Branch
+8. Try/Catch
+9. Decision
+
+Subsequent expansion is:
+
+Message -> Data Process -> Set Properties -> Exception -> Notify -> SAP JCo -> Web Services SOAP Client -> Web Services Server -> Database
 
 The immediate productization checkpoint is:
 
@@ -408,6 +435,13 @@ After that, the planned sequence is:
 The authoritative sequencing is maintained in [MVP plan](docs/MVP_PLAN.md).
 
 ## Design rule
+Official Boomi documentation defines capability semantics and constraints.
+
+Authoritative Boomi component definitions prove serialization.
+
+Neither source is sufficient alone for deterministic writable support.
+
+When a requested variant is outside the proven capability contract, `BUILD BLOCKED` is the correct behavior.
 
 The core separation is:
 

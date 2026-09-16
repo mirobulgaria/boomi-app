@@ -17,6 +17,35 @@ rather than NEW.
 ## Current execution roadmap
 
 This section is the authoritative sequencing for near-term work.
+Before additional writable shape expansion, the existing deterministic creation pipeline must pass Boomi capability compliance remediation against current official Boomi documentation and authoritative serialization evidence.
+
+Compliance remediation order:
+
+1. Start
+2. Map
+3. Connector Action
+4. Return Documents
+5. Process Call
+6. Stop
+7. Branch
+8. Try/Catch
+9. Decision
+
+Subsequent capability expansion:
+
+1. Message
+2. Data Process
+3. Set Properties
+4. Exception
+5. Notify
+6. SAP JCo
+7. Web Services SOAP Client
+8. Web Services Server
+9. Database
+
+The authoritative capability registry is:
+
+`docs/BOOMI_CAPABILITY_COMPLIANCE.md`
 
 The numbered Phase sections below remain capability specifications. Where their historical order conflicts with this roadmap, **this roadmap wins**.
 
@@ -399,6 +428,54 @@ Deliverables:
 
 ---
 
+## Boomi capability compliance checkpoint
+
+Before broadening Controlled Apply, each writable capability must have:
+
+- an explicit capability status;
+- reviewed current official Boomi documentation;
+- sufficient authoritative serialization evidence;
+- a deterministic desired-state contract;
+- Validate support;
+- Build support;
+- Verify support;
+- positive regression coverage;
+- meaningful negative regression coverage;
+- controlled live evidence where required.
+
+Known remediation includes:
+
+### Branch
+
+The Builder must enforce `numBranches` as an integer in the documented range 2 through 25.
+
+Values outside that range and non-integer values must be rejected before Build.
+
+### Try/Catch
+
+The Builder must enforce Retry Count in the documented range 0 through 5.
+
+The Builder must not infer unproven failure-trigger serialization from a single observed `catcherrors` instance.
+
+### Decision
+
+The current proven `process + static` Decision contract remains `PARTIALLY SUPPORTED`.
+
+Exactly two operands are part of the supported Decision semantics currently being implemented, but additional parameter-value serialization variants require authoritative evidence before Builder support is expanded.
+
+### Expansion rule
+
+`Message`, `Data Process`, `Set Properties`, `Exception`, `Notify` and connector-specific creation support must follow the same documentation-plus-serialization capability lifecycle.
+
+The MVP must prefer:
+
+`BUILD BLOCKED`
+
+over generation of plausible but insufficiently evidenced Boomi XML.
+
+The objective is deterministic creation of Boomi components that Boomi accepts and interprets correctly.
+
+---
 ## MVP safety principles
 
 1. Read before write.
@@ -412,3 +489,8 @@ Deliverables:
 9. Ambiguous destructive results are never automatically retried.
 10. Standalone boomi-cli remains independent.
 11. Project-specific names, fields and business structures never define generic platform logic.
+12. Official Boomi documentation defines capability semantics and constraints; authoritative Boomi component definitions prove serialization.
+13. Unsupported or insufficiently evidenced writable variants are blocked before Build or Boomi API write.
+14. A single observed component never establishes the complete generic Boomi capability.
+15. A passing regression test proves the declared tested contract; it does not expand that contract to untested Boomi variants.
+16. Build refusal is a valid and required safety outcome when the requested capability cannot be represented deterministically.

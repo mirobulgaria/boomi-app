@@ -34,6 +34,11 @@ All Boomi changes must pass through deterministic application policy and the emb
 ## 2. Project-agnostic platform principle
 
 Boomi Builder is a generic Boomi integration engineering platform.
+Boomi platform capability semantics are derived from current official Boomi documentation.
+
+Boomi component serialization is derived from authoritative component definitions retrieved from Boomi.
+
+An observed component instance proves the serialization it contains, not the complete capability of that Boomi component type.
 
 It MUST NOT be designed specifically for the SAP ↔ ZTE integration or for any other individual integration project.
 
@@ -210,6 +215,9 @@ The same principle applies to:
 ### 2.4 Unsupported structures
 
 Boomi Builder is not required to understand every possible Boomi component representation from the first release.
+An unsupported structure also includes a documented Boomi capability whose serialization has not yet been proven, or an observed serialization variant whose semantic contract has not yet been reviewed against current official Boomi documentation.
+
+Such structures may be preserved and analyzed as evidence, but they are not writable capabilities until the compliance contract is complete.
 
 When a component type, structure or representation is not supported, the application MUST:
 
@@ -242,6 +250,17 @@ Real project components may additionally be used as acceptance and regression ev
 The SAP ↔ ZTE project is the first such real-world acceptance project.
 
 Project-specific acceptance tests MUST NOT cause project-specific business logic to leak into the generic platform implementation.
+
+A writable generic capability additionally requires:
+
+- reviewed current official Boomi documentation;
+- authoritative serialization evidence;
+- an explicit supported capability contract;
+- deterministic validation;
+- deterministic Build;
+- independent Verify;
+- positive and negative regression coverage;
+- controlled live round-trip evidence where required for write confidence.
 
 ### 2.6 Architectural acceptance criterion
 
@@ -612,6 +631,13 @@ AI or project logic may interpret that structure only within the Evidence Model.
 ## 13. Evidence model
 
 Important conclusions must be evidence-aware.
+For writable platform capabilities, evidence is further separated into:
+
+- **Documentation evidence** — documented Boomi semantics, variants, constraints, cardinality, dependencies and runtime requirements;
+- **Serialization evidence** — XML elements, attributes, nesting, references, topology and connector-specific representation;
+- **Regression evidence** — proof that the implementation continues to preserve an already declared capability contract.
+
+Regression evidence does not expand a capability contract by itself.
 
 Minimum evidence statuses:
 
@@ -674,6 +700,16 @@ A component may be downloaded through the authorized Boomi execution boundary an
 ---
 
 ## 15. Write workflow
+Before the existing controlled write lifecycle begins, the desired change must pass capability compliance:
+
+CAPABILITY COMPLIANCE
+→ DESIRED STATE VALIDATION
+→ REFERENCE RESOLUTION
+→ BUILD
+→ VERIFY GENERATED DEFINITION
+→ CONTROLLED WRITE LIFECYCLE
+
+A capability outside its registered writable subset must be blocked before the Boomi API write boundary.
 
 Every write follows:
 
@@ -742,6 +778,43 @@ Runtime data, secrets and downloaded discovery artifacts must remain separated f
 
 ---
 
+## 17A. Boomi capability compliance boundary
+
+The deterministic write architecture has two independent external truth sources:
+
+1. current official Boomi documentation;
+2. authoritative Boomi component definitions.
+
+Official documentation defines the platform capability contract.
+
+Authoritative component definitions prove the serialization contract.
+
+Neither replaces the other.
+
+The AI layer may assist with:
+
+- documentation interpretation;
+- evidence analysis;
+- capability-gap identification;
+- explanation;
+- proposal generation.
+
+The AI layer cannot:
+
+- promote a capability to writable support;
+- invent missing serialization;
+- manufacture component references;
+- bypass deterministic validation;
+- bypass human approval;
+- become an uncontrolled direct write path to Boomi.
+
+The deterministic engine must block desired states containing capability variants outside the registered writable subset.
+
+The authoritative human-readable registry is:
+
+`docs/BOOMI_CAPABILITY_COMPLIANCE.md`
+
+---
 ## 18. Initial technology direction
 
 Frontend:
