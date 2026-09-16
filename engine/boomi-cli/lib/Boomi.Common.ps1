@@ -273,6 +273,8 @@ function Get-BoomiComponentXml {
         ([IO.Path]::GetTempPath()) `
         ("boomi_" + [Guid]::NewGuid().ToString("N") + ".xml")
 
+    $primaryError = $null
+
     try {
 
         Invoke-WebRequest `
@@ -321,12 +323,55 @@ function Get-BoomiComponentXml {
             Bytes   = $bytes
         }
     }
+    catch {
+
+        $primaryError = $_
+        throw
+    }
     finally {
 
-        Remove-Item `
-            -LiteralPath $tempFile `
-            -Force `
-            -ErrorAction SilentlyContinue
+        # ----------------------------------------------------
+        # Hardened cleanup: verify residue removal
+        # ----------------------------------------------------
+
+        $cleanupFailed = $false
+
+        if (Test-Path -LiteralPath $tempFile -PathType Leaf) {
+
+            try {
+                Remove-Item `
+                    -LiteralPath $tempFile `
+                    -Force `
+                    -ErrorAction Stop
+            }
+            catch {
+                # Deletion command threw, but file may still exist.
+                # Check authoritative residue state.
+            }
+
+            # Authoritative residue check: does file still exist?
+            if (Test-Path -LiteralPath $tempFile -PathType Leaf) {
+                $cleanupFailed = $true
+            }
+        }
+
+        if ($cleanupFailed) {
+
+            if ($null -eq $primaryError) {
+
+                # CASE B: Primary succeeded, cleanup failed.
+                # Throw generic cleanup-security error.
+                throw "Boomi Component temporary response cleanup failed."
+            }
+            else {
+
+                # CASE D: Primary failed, cleanup also failed.
+                # Preserve original primary failure.
+                # The cleanup failure is recorded internally but does
+                # not replace the original exception.
+                Write-Verbose "Boomi Component temporary response cleanup failed after primary operation failure."
+            }
+        }
     }
 }
 
