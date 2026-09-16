@@ -295,7 +295,7 @@ contract has passed the required compliance gates.
                            SUPPORTED   for exactly two operands     parameter-value types and
                                        using                        obtain serialization
                                        proven`process + static`     evidence before expanding
-                                       serialization                
+                                       serialization
 
   Message                  EVIDENCE    Real Message instances are   Documentation and
                            REQUIRED    available as evidence        serialization audit
