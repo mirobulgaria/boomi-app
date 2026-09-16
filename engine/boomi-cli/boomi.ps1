@@ -316,12 +316,23 @@ switch ($Command) {
 
     "get-environment-extensions" {
 
-        if ([string]::IsNullOrWhiteSpace($EnvironmentId)) {
-            throw "get-environment-extensions requires -EnvironmentId"
-        }
+    if ([string]::IsNullOrWhiteSpace($EnvironmentId)) {
+        throw "get-environment-extensions requires -EnvironmentId"
+    }
 
-        Show-BoomiEnvironmentExtensions `
-            -EnvironmentId $EnvironmentId
+    if (
+        $OutputFormat -ne "human" -and
+        $OutputFormat -ne "xml"
+    ) {
+        throw (
+            "get-environment-extensions requires " +
+            "-OutputFormat human or xml"
+        )
+    }
+
+    Show-BoomiEnvironmentExtensions `
+        -EnvironmentId $EnvironmentId `
+        -OutputFormat $OutputFormat
     }
 
     "create-preview" {

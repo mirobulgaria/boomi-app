@@ -47,6 +47,10 @@ class BoomiEnvironmentResult:
     name: str
     classification: str
 
+@dataclass(frozen=True)
+class BoomiEnvironmentExtensionsResult:
+    environment_id: str
+    xml: str
 
 class BoomiEngineError(RuntimeError):
     pass
@@ -399,6 +403,70 @@ class BoomiEngineAdapter:
 
         return tuple(
             environments
+        )
+
+    def get_environment_extensions(
+        self,
+        *,
+        workspace: Path,
+        environment_id: str,
+        environment: Mapping[str, str],
+    ) -> BoomiEnvironmentExtensionsResult:
+        resolved_workspace = self._validate_workspace(
+            workspace
+        )
+
+        if not environment_id.strip():
+            raise ValueError(
+                "environment_id must not be empty."
+            )
+
+        result = self.runner.run_script(
+            self.paths.boomi_cli_path,
+            arguments=[
+                "get-environment-extensions",
+                "-Workspace",
+                str(resolved_workspace),
+                "-EnvironmentId",
+                environment_id,
+                "-OutputFormat",
+                "xml",
+                "-RuntimeMode",
+                "app-readonly",
+            ],
+            environment=environment,
+        )
+
+        self._validate_process_result(
+            result,
+            operation="get-environment-extensions",
+        )
+
+        xml_text = result.stdout
+
+        try:
+            root = ET.fromstring(
+                xml_text
+            )
+        except ET.ParseError as exc:
+            raise BoomiEngineContractError(
+                "Embedded Boomi CLI returned invalid "
+                "EnvironmentExtensions XML."
+            ) from exc
+
+        if (
+            self._local_name(root.tag)
+            != "EnvironmentExtensions"
+        ):
+            raise BoomiEngineContractError(
+                "Embedded Boomi CLI "
+                "EnvironmentExtensions XML root "
+                "must be EnvironmentExtensions."
+            )
+
+        return BoomiEnvironmentExtensionsResult(
+            environment_id=environment_id,
+            xml=xml_text,
         )
 
     @staticmethod
