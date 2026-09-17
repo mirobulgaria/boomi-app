@@ -31,8 +31,8 @@ function Get-BoomiProcessDefinitionCorpus {
 
     .DESCRIPTION
     Performs complete ComponentMetadata pagination, selects up to
-    10 active process components in deterministic componentId
-    order, acquires every selected Component definition through
+    10 unique active process componentIds in deterministic
+    componentId order, acquires every selected Component definition through
     Get-BoomiComponentXml, validates each definition, and returns
     exactly one serialized JSON machine envelope:
 
@@ -62,8 +62,10 @@ function Get-BoomiProcessDefinitionCorpus {
     # Mirrors the Stage 2B.1 evidence-supported selection:
     #   type == process
     #   deleted != true
+    #   non-empty componentId
+    #   uniqueness by componentId before the bound
     #   stable ordering by componentId
-    #   hard bound: first 10
+    #   hard bound: first 10 unique componentIds
     # --------------------------------------------------------
 
     $activeProcesses = @(
@@ -83,22 +85,46 @@ function Get-BoomiProcessDefinitionCorpus {
                 return (
                     [string]$deletedProperty.Value
                 ).ToLowerInvariant() -ne "true"
-            } |
-            Sort-Object -Property componentId
+            }
     )
 
     if ($activeProcesses.Count -eq 0) {
         throw "Process definition corpus contained no active process definitions."
     }
 
-    $definitionLimit = 10
+    # --------------------------------------------------------
+    # ComponentMetadata can contain multiple active rows for
+    # one componentId. Corpus cardinality is based on unique
+    # component identities, not metadata-history rows.
+    #
+    # Do not filter by currentVersion and do not select a
+    # metadata version. Component acquisition uses
+    # Component/{ComponentId}.
+    # --------------------------------------------------------
 
-    if ($activeProcesses.Count -lt $definitionLimit) {
-        $definitionLimit = $activeProcesses.Count
+    $activeProcessIds = @(
+        $activeProcesses |
+            ForEach-Object {
+                [string]$_.componentId
+            } |
+            Where-Object {
+                -not [string]::IsNullOrWhiteSpace($_)
+            } |
+            Sort-Object -Unique
+    )
+
+    if ($activeProcessIds.Count -eq 0) {
+        throw "Process definition corpus contained no active process identities."
     }
 
-    $selectedProcesses = @(
-        $activeProcesses[0..($definitionLimit - 1)]
+    $definitionLimit = 10
+
+    if ($activeProcessIds.Count -lt $definitionLimit) {
+        $definitionLimit = $activeProcessIds.Count
+    }
+
+    $selectedProcessIds = @(
+        $activeProcessIds[0..($definitionLimit - 1)]
     )
 
     # --------------------------------------------------------
@@ -111,9 +137,9 @@ function Get-BoomiProcessDefinitionCorpus {
 
     $definitions = @()
 
-    foreach ($processMeta in $selectedProcesses) {
+    foreach ($componentId in $selectedProcessIds) {
 
-        $componentId = [string]$processMeta.componentId
+        $componentId = [string]$componentId
 
         $response = Get-BoomiComponentXml `
             -ComponentId $componentId

@@ -326,6 +326,202 @@ $envelopeJson = Get-BoomiProcessDefinitionCorpus
     assert extracted == sorted(ids)
 
 
+
+def test_producer_deduplicates_metadata_before_bound() -> None:
+    unique_ids = [
+        f"synthetic-{i:02d}"
+        for i in range(12)
+    ]
+
+    metadata_ids = (
+        [unique_ids[0]] * 5
+        + [unique_ids[1]] * 3
+        + unique_ids[2:]
+    )
+
+    items = "\n".join(
+        f"    {_metadata_item(cid)},"
+        for cid in metadata_ids
+    ).rstrip(",")
+
+    selected_ids = sorted(unique_ids)[:10]
+
+    result = _run_corpus_producer_harness(
+        mock_script=f"""
+{_METADATA_MOCK}
+
+$script:MetadataItems = @(
+{items}
+)
+
+$script:RequestedIds = @()
+
+function Invoke-WebRequest {{
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Method,
+
+        [Parameter(Mandatory=$true)]
+        [string]$Uri,
+
+        [Parameter(Mandatory=$true)]
+        [hashtable]$Headers,
+
+        [Parameter(Mandatory=$true)]
+        [string]$OutFile,
+
+        [switch]$UseBasicParsing
+    )
+
+    $componentId = $Uri.Substring(
+        $Uri.LastIndexOf('/') + 1
+    )
+
+    $script:RequestedIds += $componentId
+
+    $allowedIds = @(
+        {",".join(f'"{cid}"' for cid in selected_ids)}
+    )
+
+    if ($componentId -notin $allowedIds) {{
+        throw "Unexpected component GET"
+    }}
+
+    $xml = (
+        '<Component componentId="' +
+        $componentId +
+        '" type="process" version="1" deleted="false">' +
+        '<object><process><shapes /></process></object>' +
+        '</Component>'
+    )
+
+    [IO.File]::WriteAllText(
+        $OutFile,
+        $xml,
+        [Text.Encoding]::UTF8
+    )
+}}
+
+$envelopeJson = Get-BoomiProcessDefinitionCorpus
+
+[PSCustomObject]@{{
+    Envelope = $envelopeJson
+    RequestedIds = @($script:RequestedIds)
+}} | ConvertTo-Json -Depth 20 -Compress
+"""
+    )
+
+    assert result.returncode == 0, result.stderr
+
+    outer = json.loads(result.stdout)
+    envelope = json.loads(outer["Envelope"])
+    requested_ids = outer["RequestedIds"]
+
+    assert len(envelope["definitions"]) == 10
+    assert len(requested_ids) == 10
+    assert len(set(requested_ids)) == 10
+    assert requested_ids == selected_ids
+
+
+def test_producer_zero_current_component_remains_eligible() -> None:
+    zero_current_id = "synthetic-a"
+    current_id = "synthetic-b"
+
+    result = _run_corpus_producer_harness(
+        mock_script=f"""
+{_METADATA_MOCK}
+
+$script:MetadataItems = @(
+    [PSCustomObject]@{{
+        componentId = "{zero_current_id}"
+        type = "process"
+        deleted = "false"
+        currentVersion = "false"
+        version = "1"
+        name = "synthetic"
+    }},
+    [PSCustomObject]@{{
+        componentId = "{zero_current_id}"
+        type = "process"
+        deleted = "false"
+        currentVersion = "false"
+        version = "2"
+        name = "synthetic"
+    }},
+    [PSCustomObject]@{{
+        componentId = "{current_id}"
+        type = "process"
+        deleted = "false"
+        currentVersion = "true"
+        version = "1"
+        name = "synthetic"
+    }}
+)
+
+$script:RequestedIds = @()
+
+function Invoke-WebRequest {{
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Method,
+
+        [Parameter(Mandatory=$true)]
+        [string]$Uri,
+
+        [Parameter(Mandatory=$true)]
+        [hashtable]$Headers,
+
+        [Parameter(Mandatory=$true)]
+        [string]$OutFile,
+
+        [switch]$UseBasicParsing
+    )
+
+    $componentId = $Uri.Substring(
+        $Uri.LastIndexOf('/') + 1
+    )
+
+    $script:RequestedIds += $componentId
+
+    if (
+        $componentId -ne "{zero_current_id}" -and
+        $componentId -ne "{current_id}"
+    ) {{
+        throw "Unexpected component GET"
+    }}
+
+    $xml = (
+        '<Component componentId="' +
+        $componentId +
+        '" type="process" version="1" deleted="false">' +
+        '<object><process><shapes /></process></object>' +
+        '</Component>'
+    )
+
+    [IO.File]::WriteAllText(
+        $OutFile,
+        $xml,
+        [Text.Encoding]::UTF8
+    )
+}}
+
+$null = Get-BoomiProcessDefinitionCorpus
+
+@($script:RequestedIds) |
+    ConvertTo-Json -Compress
+"""
+    )
+
+    assert result.returncode == 0, result.stderr
+
+    requested_ids = json.loads(result.stdout)
+
+    assert requested_ids == [
+        zero_current_id,
+        current_id,
+    ]
+
+
 def test_producer_preserves_xml_declaration_and_cyrillic() -> None:
     cid = "aaaaaaaa-2222-4222-8222-222222222222"
     cyrillic_name = "".join(

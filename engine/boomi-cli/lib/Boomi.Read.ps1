@@ -981,20 +981,47 @@ function Invoke-BoomiProcessDefinitionCorpusProbe {
         throw "CORPUS PROBE: No active processes found."
     }
 
-    # Sort by componentId for deterministic selection
-    $activeProcesses = @(
+    # --------------------------------------------------------
+    # Select unique process identities before applying the
+    # bounded sample.
+    #
+    # ComponentMetadata can contain multiple active metadata
+    # rows for the same componentId. Those rows represent one
+    # component identity for corpus acquisition purposes and
+    # must not consume multiple positions in the sample.
+    #
+    # currentVersion and version are intentionally not used as
+    # selection filters here. Acquisition is performed through
+    # Component/{ComponentId}.
+    # --------------------------------------------------------
+
+    $activeProcessIds = @(
         $activeProcesses |
-            Sort-Object -Property componentId
+            ForEach-Object {
+                [string]$_.componentId
+            } |
+            Where-Object {
+                -not [string]::IsNullOrWhiteSpace($_)
+            } |
+            Sort-Object -Unique
     )
 
-    # Hard bounded sample: first 10
-    $definitionsRequested = 10
+    Write-Host "Unique active process IDs  : $($activeProcessIds.Count)"
 
-    if ($activeProcesses.Count -lt $definitionsRequested) {
-        $definitionsRequested = $activeProcesses.Count
+    if ($activeProcessIds.Count -eq 0) {
+        throw "CORPUS PROBE: No active process identities found."
     }
 
-    $selectedProcesses = $activeProcesses[0..($definitionsRequested - 1)]
+    # Hard bounded sample: first 10 unique component IDs
+    $definitionsRequested = 10
+
+    if ($activeProcessIds.Count -lt $definitionsRequested) {
+        $definitionsRequested = $activeProcessIds.Count
+    }
+
+    $selectedProcessIds = @(
+        $activeProcessIds[0..($definitionsRequested - 1)]
+    )
 
     Write-Host "Definitions requested      : $definitionsRequested"
 
@@ -1007,9 +1034,9 @@ function Invoke-BoomiProcessDefinitionCorpusProbe {
     $shapeTypeInventory = @{}
     $shapeFingerprints = @{}
 
-    foreach ($processMeta in $selectedProcesses) {
+    foreach ($componentId in $selectedProcessIds) {
 
-        $componentId = [string]$processMeta.componentId
+        $componentId = [string]$componentId
 
         try {
 

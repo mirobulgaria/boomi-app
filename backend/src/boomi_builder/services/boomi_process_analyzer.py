@@ -381,6 +381,16 @@ class BoomiProcessAnalyzer:
                     )
                 )
 
+                # Boomi process definitions can contain the
+                # literal structural sentinel "unset" when a
+                # dragpoint has no connected target shape.
+                #
+                # It is not an execution-graph transition.
+                # Other unknown target names remain subject to
+                # normal transition-target validation.
+                if target_shape == "unset":
+                    continue
+
                 transitions.append(
                     ProcessTransition(
                         source_shape=source_shape,

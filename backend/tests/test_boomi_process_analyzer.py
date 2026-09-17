@@ -552,6 +552,40 @@ def test_analyzer_rejects_duplicate_shape_names() -> None:
         )
 
 
+def test_analyzer_ignores_unset_transition_target() -> None:
+    xml = """\
+<Component
+    xmlns="http://api.platform.boomi.com/"
+    type="process">
+  <object>
+    <process xmlns="">
+      <shapes>
+        <shape
+            name="shapeA"
+            shapetype="start">
+          <dragpoints>
+            <dragpoint
+                name="shapeA.out"
+                toShape="unset"
+                x="200.0"
+                y="100.0" />
+          </dragpoints>
+        </shape>
+      </shapes>
+    </process>
+  </object>
+</Component>
+"""
+
+    result = analyze(
+        xml
+    )
+
+    assert result.shape_count == 1
+    assert result.transition_count == 0
+    assert result.transitions == ()
+
+
 def test_analyzer_rejects_transition_to_unknown_shape() -> None:
     xml = """\
 <Component
